@@ -1,155 +1,123 @@
-'use client'
-
-import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
+
+type Review = {
+  id: string
+  review_date: string
+  rating: number
+  notes: string | null
+  profile: { display_name: string } | null
+  session: { tasting_date: string; location: string } | null
+}
 
 type Whisky = {
   id: string
   brand: string
   name: string
+  category: string | null
+  age_years: number | null
+  image_url: string | null
 }
 
-export default function UploadBottlePhotoPage() {
-  const [whiskies, setWhiskies] = useState<Whisky[]>([])
-  const [whiskyId, setWhiskyId] = useState('')
-  const [file, setFile] = useState<File | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
+async function getWhiskyDetail(id: string): Promise<{ whisky: Whisky; reviews: Review[] }> {
+  const [{ data: whisky, error: whiskyError }, { data: reviews, error: reviewsError }] =
+    await Promise.all([
+      supabase.from('whiskies').select('*').eq('id', id).single(),
+      supabase
+        .from('reviews')
+        .select(`
+          id,
+          review_date,
+          rating,
+          notes,
+          profile:profiles(display_name),
+          session:tasting_sessions(tasting_date, location)
+        `)
+        .eq('whisky_id', id)
+        .order('review_date', { ascending: false }),
+    ])
 
-  useEffect(() => {
-    async function loadWhiskies() {
-      const { data, error } = await supabase
-        .from('whiskies')
-        .select('id, brand, name')
-        .order('brand', { ascending: true })
+  if (whiskyError) throw new Error(whiskyError.message)
+  if (reviewsError) throw new Error(reviewsError.message)
 
-      if (error) {
-        setMessage(error.message)
-        return
-      }
-
-      setWhiskies(data ?? [])
-    }
-
-    loadWhiskies()
-  }, [])
-
-  async function handleUpload(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    setMessage('')
-
-    if (!whiskyId) {
-      setMessage('Please choose a bottle.')
-      return
-    }
-
-    if (!file) {
-      setMessage('Please choose an image file.')
-      return
-    }
-
-    setLoading(true)
-
-    try {
-      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg'
-      const safeExt = fileExt.replace(/[^a-z0-9]/g, '') || 'jpg'
-      const filePath = `${whiskyId}.${safeExt}`
-
-      const { error: uploadError } = await supabase.storage
-        .from('bottle-photos')
-        .upload(filePath, file, { upsert: true })
-
-      if (uploadError) {
-        setMessage(uploadError.message)
-        setLoading(false)
-        return
-      }
-
-      const { data: publicUrlData } = supabase.storage
-        .from('bottle-photos')
-        .getPublicUrl(filePath)
-
-      const imageUrl = publicUrlData.publicUrl
-
-      const { error: updateError } = await supabase
-        .from('whiskies')
-        .update({ image_url: imageUrl })
-        .eq('id', whiskyId)
-
-      if (updateError) {
-        setMessage(updateError.message)
-        setLoading(false)
-        return
-      }
-
-      setMessage('Bottle photo uploaded successfully.')
-      setWhiskyId('')
-      setFile(null)
-
-      const fileInput = document.getElementById('photo-input') as HTMLInputElement | null
-      if (fileInput) fileInput.value = ''
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Something went wrong.')
-    }
-
-    setLoading(false)
+  return {
+    whisky: whisky as Whisky,
+    reviews: (reviews ?? []) as Review[],
   }
+}
+
+export default async function WhiskyDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
+  const { id } = await params
+  const { whisky, reviews } = await getWhiskyDetail(id)
+
+  const avg =
+    reviews.length > 0
+      ? (
+          reviews.reduce((sum, review) => sum + Number(review.rating), 0) / reviews.length
+        ).toFixed(2)
+      : null
 
   return (
-    <main className="mx-auto max-w-2xl p-6">
-      <h1 className="mb-2 text-3xl font-bold">Upload Bottle Photo</h1>
-      <p className="mb-6 text-sm text-gray-500">
-        Choose a bottle, upload an image, and it will be saved to Supabase Storage.
-      </p>
+    <main className="mx-auto max-w-4xl p-6 space-y-6">
+      <section className="rounded-2xl border p-6 shadow-sm">
+        <h1 className="text-3xl font-bold">
+          {whisky.brand} {whisky.name}
+        </h1>
 
-      <form
-        onSubmit={handleUpload}
-        className="space-y-4 rounded-2xl border p-6 shadow-sm"
-      >
-        <div>
-          <label htmlFor="whisky" className="mb-2 block text-sm font-medium">
-            Bottle
-          </label>
-          <select
-            id="whisky"
-            className="w-full rounded-xl border p-3"
-            value={whiskyId}
-            onChange={(e) => setWhiskyId(e.target.value)}
-          >
-            <option value="">Select bottle</option>
-            {whiskies.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.brand} {w.name}
-              </option>
-            ))}
-          </select>
+        <div className="mt-2 space-y-1 text-sm text-gray-500">
+          <p>Category: {whisky.category ?? 'Unknown'}</p>
+          <p>Age: {whisky.age_years ?? '—'}</p>
+          <p>Average rating: {avg ?? '—'} / 10</p>
         </div>
 
-        <div>
-          <label htmlFor="photo-input" className="mb-2 block text-sm font-medium">
-            Photo
-          </label>
-          <input
-            id="photo-input"
-            className="w-full rounded-xl border p-3"
-            type="file"
-            accept="image/*"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        {whisky.image_url ? (
+          <img
+            src={whisky.image_url}
+            alt={`${whisky.brand} ${whisky.name}`}
+            className="mt-4 h-72 w-full rounded-2xl border object-cover"
           />
-        </div>
+        ) : (
+          <div className="mt-4 flex h-72 w-full items-center justify-center rounded-2xl border text-sm text-gray-500">
+            No bottle photo yet
+          </div>
+        )}
+      </section>
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded-xl border px-4 py-2 font-medium disabled:opacity-50"
-        >
-          {loading ? 'Uploading...' : 'Upload photo'}
-        </button>
+      <section className="space-y-3">
+        <h2 className="text-xl font-semibold">Reviews</h2>
 
-        {message ? (
-          <p className="text-sm">{message}</p>
-        ) : null}
-      </form>
+        {reviews.length === 0 ? (
+          <div className="rounded-2xl border p-4 text-sm text-gray-500">
+            No reviews yet.
+          </div>
+        ) : (
+          reviews.map((review) => (
+            <div key={review.id} className="rounded-2xl border p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="font-medium">
+                    {review.profile?.display_name ?? 'Unknown reviewer'}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    {review.review_date} · {review.session?.location ?? 'Unknown location'}
+                  </p>
+                </div>
+
+                <div className="rounded-full border px-3 py-1 text-sm font-medium">
+                  {review.rating}/10
+                </div>
+              </div>
+
+              {review.notes ? (
+                <p className="mt-3 text-sm leading-6">{review.notes}</p>
+              ) : null}
+            </div>
+          ))
+        )}
+      </section>
     </main>
   )
 }
