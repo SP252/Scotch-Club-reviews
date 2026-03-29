@@ -21,13 +21,28 @@ type Review = {
   session: { tasting_date: string; location: string } | null
 }
 
+type WhiskyRow = {
+  id: string
+  brand: string
+  name: string
+  category: string | null
+  age_years: number | null
+  cost: number | null
+  image_url: string | null
+  provided_by_profile_id: string | null
+  provided_by: MaybeArray<{ display_name: string }>
+}
+
 type Whisky = {
   id: string
   brand: string
   name: string
   category: string | null
   age_years: number | null
+  cost: number | null
   image_url: string | null
+  provided_by_profile_id: string | null
+  provided_by: { display_name: string } | null
 }
 
 function firstOrSelf<T>(value: MaybeArray<T>): T | null {
@@ -36,9 +51,23 @@ function firstOrSelf<T>(value: MaybeArray<T>): T | null {
 }
 
 async function getWhiskyDetail(id: string): Promise<{ whisky: Whisky; reviews: Review[] }> {
-  const [{ data: whisky, error: whiskyError }, { data: reviewsData, error: reviewsError }] =
+  const [{ data: whiskyData, error: whiskyError }, { data: reviewsData, error: reviewsError }] =
     await Promise.all([
-      supabase.from('whiskies').select('*').eq('id', id).single(),
+      supabase
+        .from('whiskies')
+        .select(`
+          id,
+          brand,
+          name,
+          category,
+          age_years,
+          cost,
+          image_url,
+          provided_by_profile_id,
+          provided_by:profiles!whiskies_provided_by_profile_id_fkey(display_name)
+        `)
+        .eq('id', id)
+        .single(),
       supabase
         .from('reviews')
         .select(`
@@ -56,6 +85,20 @@ async function getWhiskyDetail(id: string): Promise<{ whisky: Whisky; reviews: R
   if (whiskyError) throw new Error(whiskyError.message)
   if (reviewsError) throw new Error(reviewsError.message)
 
+  const whiskyRow = whiskyData as WhiskyRow
+
+  const whisky: Whisky = {
+    id: whiskyRow.id,
+    brand: whiskyRow.brand,
+    name: whiskyRow.name,
+    category: whiskyRow.category,
+    age_years: whiskyRow.age_years,
+    cost: whiskyRow.cost,
+    image_url: whiskyRow.image_url,
+    provided_by_profile_id: whiskyRow.provided_by_profile_id,
+    provided_by: firstOrSelf(whiskyRow.provided_by),
+  }
+
   const normalizedReviews: Review[] = ((reviewsData ?? []) as ReviewRow[]).map((review) => ({
     id: review.id,
     review_date: review.review_date,
@@ -66,7 +109,7 @@ async function getWhiskyDetail(id: string): Promise<{ whisky: Whisky; reviews: R
   }))
 
   return {
-    whisky: whisky as Whisky,
+    whisky,
     reviews: normalizedReviews,
   }
 }
@@ -98,6 +141,8 @@ export default async function WhiskyDetailPage({
             <div className="mt-2 space-y-1 text-sm text-gray-500">
               <p>Category: {whisky.category ?? 'Unknown'}</p>
               <p>Age: {whisky.age_years ?? '—'}</p>
+              <p>Price: {whisky.cost != null ? `$${Number(whisky.cost).toFixed(2)}` : '—'}</p>
+              <p>Provided by: {whisky.provided_by?.display_name ?? whisky.provided_by_profile_id ?? '—'}</p>
               <p>Average rating: {avg ?? '—'} / 10</p>
             </div>
           </div>
