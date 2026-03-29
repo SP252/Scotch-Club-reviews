@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 
 type MaybeArray<T> = T | T[] | null
@@ -88,14 +89,25 @@ export default async function WhiskyDetailPage({
   return (
     <main className="mx-auto max-w-4xl p-6 space-y-6">
       <section className="rounded-2xl border p-6 shadow-sm">
-        <h1 className="text-3xl font-bold">
-          {whisky.brand} {whisky.name}
-        </h1>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold">
+              {whisky.brand} {whisky.name}
+            </h1>
 
-        <div className="mt-2 space-y-1 text-sm text-gray-500">
-          <p>Category: {whisky.category ?? 'Unknown'}</p>
-          <p>Age: {whisky.age_years ?? '—'}</p>
-          <p>Average rating: {avg ?? '—'} / 10</p>
+            <div className="mt-2 space-y-1 text-sm text-gray-500">
+              <p>Category: {whisky.category ?? 'Unknown'}</p>
+              <p>Age: {whisky.age_years ?? '—'}</p>
+              <p>Average rating: {avg ?? '—'} / 10</p>
+            </div>
+          </div>
+
+          <Link
+            href={`/whiskies/upload-photo?whiskyId=${encodeURIComponent(whisky.id)}`}
+            className="rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+          >
+            Upload Photo
+          </Link>
         </div>
 
         {whisky.image_url ? (
