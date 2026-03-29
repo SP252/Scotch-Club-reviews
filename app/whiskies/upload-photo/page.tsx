@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 
 type Whisky = {
@@ -11,14 +10,19 @@ type Whisky = {
 }
 
 export default function UploadBottlePhotoPage() {
-  const searchParams = useSearchParams()
-  const initialWhiskyId = searchParams.get('whiskyId') ?? ''
-
   const [whiskies, setWhiskies] = useState<Whisky[]>([])
-  const [whiskyId, setWhiskyId] = useState(initialWhiskyId)
+  const [whiskyId, setWhiskyId] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const fromUrl = params.get('whiskyId')
+    if (fromUrl) {
+      setWhiskyId(fromUrl)
+    }
+  }, [])
 
   useEffect(() => {
     async function loadWhiskies() {
@@ -37,12 +41,6 @@ export default function UploadBottlePhotoPage() {
 
     loadWhiskies()
   }, [])
-
-  useEffect(() => {
-    if (initialWhiskyId) {
-      setWhiskyId(initialWhiskyId)
-    }
-  }, [initialWhiskyId])
 
   async function handleUpload(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
