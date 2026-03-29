@@ -1,12 +1,14 @@
 import { supabase } from '@/lib/supabase/client'
 
+type MaybeArray<T> = T | T[] | null
+
 type ReviewRow = {
   id: string
   review_date: string
   rating: number
   notes: string | null
-  profile: { display_name: string }[] | null
-  session: { tasting_date: string; location: string }[] | null
+  profile: MaybeArray<{ display_name: string }>
+  session: MaybeArray<{ tasting_date: string; location: string }>
 }
 
 type Review = {
@@ -25,6 +27,11 @@ type Whisky = {
   category: string | null
   age_years: number | null
   image_url: string | null
+}
+
+function firstOrSelf<T>(value: MaybeArray<T>): T | null {
+  if (!value) return null
+  return Array.isArray(value) ? value[0] ?? null : value
 }
 
 async function getWhiskyDetail(id: string): Promise<{ whisky: Whisky; reviews: Review[] }> {
@@ -53,8 +60,8 @@ async function getWhiskyDetail(id: string): Promise<{ whisky: Whisky; reviews: R
     review_date: review.review_date,
     rating: Number(review.rating),
     notes: review.notes,
-    profile: review.profile?.[0] ?? null,
-    session: review.session?.[0] ?? null,
+    profile: firstOrSelf(review.profile),
+    session: firstOrSelf(review.session),
   }))
 
   return {
