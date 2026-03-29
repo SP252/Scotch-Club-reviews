@@ -159,10 +159,10 @@ export default async function WhiskyDetailPage({
           <img
             src={whisky.image_url}
             alt={`${whisky.brand} ${whisky.name}`}
-            className="mt-4 h-72 w-full rounded-2xl border object-cover"
+            className="mt-4 h-40 w-full rounded-xl object-cover border shadow-sm"
           />
         ) : (
-          <div className="mt-4 flex h-72 w-full items-center justify-center rounded-2xl border text-sm text-gray-500">
+          <div className="mt-4 flex h-40 w-full items-center justify-center rounded-2xl border text-sm text-gray-500">
             No bottle photo yet
           </div>
         )}
