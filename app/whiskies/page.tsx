@@ -114,7 +114,6 @@ export default function WhiskiesPage() {
 
   const filteredWhiskies = useMemo(() => {
     const q = search.trim().toLowerCase()
-
     if (!q) return whiskies
 
     return whiskies.filter((whisky) => {
@@ -142,7 +141,7 @@ export default function WhiskiesPage() {
 
         <input
           type="text"
-          placeholder="Search by brand, bottle, category, or provider..."
+          placeholder="Search bottles, categories, or providers..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full rounded-xl border p-3"
@@ -169,10 +168,10 @@ export default function WhiskiesPage() {
                 <img
                   src={whisky.image_url}
                   alt={`${whisky.brand} ${whisky.name}`}
-                  className="mb-3 h-44 w-full rounded-xl border object-cover"
+                  className="mb-3 aspect-[4/3] w-full rounded-xl border object-cover"
                 />
               ) : (
-                <div className="mb-3 flex h-44 w-full items-center justify-center rounded-xl border text-sm text-gray-500">
+                <div className="mb-3 flex aspect-[4/3] w-full items-center justify-center rounded-xl border text-sm text-gray-500">
                   No photo
                 </div>
               )}
