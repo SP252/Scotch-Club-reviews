@@ -10,8 +10,6 @@ type WhiskyRow = {
   category: string | null
   image_url: string | null
   cost: number | null
-  review_count: number | string | null
-  avg_rating: number | string | null
   provided_by_profile_id: string | null
   provided_by: MaybeArray<{ display_name: string }>
 }
@@ -23,10 +21,10 @@ type Whisky = {
   category: string | null
   image_url: string | null
   cost: number | null
-  review_count: number
-  avg_rating: number | null
   provided_by_profile_id: string | null
   provided_by: { display_name: string } | null
+  review_count: number
+  avg_rating: number | null
 }
 
 function firstOrSelf<T>(value: MaybeArray<T>): T | null {
@@ -35,36 +33,55 @@ function firstOrSelf<T>(value: MaybeArray<T>): T | null {
 }
 
 async function getWhiskies(): Promise<Whisky[]> {
-  const { data, error } = await supabase
-    .from('whisky_stats')
-    .select(`
-      id,
-      brand,
-      name,
-      category,
-      image_url,
-      cost,
-      review_count,
-      avg_rating,
-      provided_by_profile_id,
-      provided_by:profiles!whiskies_provided_by_profile_id_fkey(display_name)
-    `)
-    .order('brand', { ascending: true })
+  const [{ data: whiskiesData, error: whiskiesError }, { data: statsData, error: statsError }] =
+    await Promise.all([
+      supabase
+        .from('whiskies')
+        .select(`
+          id,
+          brand,
+          name,
+          category,
+          image_url,
+          cost,
+          provided_by_profile_id,
+          provided_by:profiles!whiskies_provided_by_profile_id_fkey(display_name)
+        `)
+        .order('brand', { ascending: true }),
+      supabase
+        .from('whisky_stats')
+        .select('id, review_count, avg_rating'),
+    ])
 
-  if (error) throw new Error(error.message)
+  if (whiskiesError) throw new Error(whiskiesError.message)
+  if (statsError) throw new Error(statsError.message)
 
-  return ((data ?? []) as WhiskyRow[]).map((whisky) => ({
-    id: whisky.id,
-    brand: whisky.brand,
-    name: whisky.name,
-    category: whisky.category,
-    image_url: whisky.image_url,
-    cost: whisky.cost != null ? Number(whisky.cost) : null,
-    review_count: Number(whisky.review_count ?? 0),
-    avg_rating: whisky.avg_rating != null ? Number(whisky.avg_rating) : null,
-    provided_by_profile_id: whisky.provided_by_profile_id,
-    provided_by: firstOrSelf(whisky.provided_by),
-  }))
+  const statsMap = new Map(
+    (statsData ?? []).map((row: any) => [
+      row.id,
+      {
+        review_count: Number(row.review_count ?? 0),
+        avg_rating: row.avg_rating != null ? Number(row.avg_rating) : null,
+      },
+    ])
+  )
+
+  return ((whiskiesData ?? []) as WhiskyRow[]).map((whisky) => {
+    const stats = statsMap.get(whisky.id)
+
+    return {
+      id: whisky.id,
+      brand: whisky.brand,
+      name: whisky.name,
+      category: whisky.category,
+      image_url: whisky.image_url,
+      cost: whisky.cost != null ? Number(whisky.cost) : null,
+      provided_by_profile_id: whisky.provided_by_profile_id,
+      provided_by: firstOrSelf(whisky.provided_by),
+      review_count: stats?.review_count ?? 0,
+      avg_rating: stats?.avg_rating ?? null,
+    }
+  })
 }
 
 export default async function WhiskiesPage() {
