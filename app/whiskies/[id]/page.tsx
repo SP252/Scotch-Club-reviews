@@ -130,42 +130,51 @@ export default async function WhiskyDetailPage({
       : null
 
   return (
-    <main className="mx-auto max-w-4xl p-6 space-y-6">
+    <main className="mx-auto max-w-5xl p-6 space-y-6">
       <section className="rounded-2xl border p-6 shadow-sm">
-        <div className="flex items-start justify-between gap-4">
+        <div className="grid gap-6 md:grid-cols-[1.2fr_0.8fr] md:items-start">
           <div>
-            <h1 className="text-3xl font-bold">
-              {whisky.brand} {whisky.name}
-            </h1>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h1 className="text-3xl font-bold">
+                  {whisky.brand} {whisky.name}
+                </h1>
 
-            <div className="mt-2 space-y-1 text-sm text-gray-500">
-              <p>Category: {whisky.category ?? 'Unknown'}</p>
-              <p>Age: {whisky.age_years ?? '—'}</p>
-              <p>Price: {whisky.cost != null ? `$${Number(whisky.cost).toFixed(2)}` : '—'}</p>
-              <p>Provided by: {whisky.provided_by?.display_name ?? whisky.provided_by_profile_id ?? '—'}</p>
-              <p>Average rating: {avg ?? '—'} / 10</p>
+                <div className="mt-3 space-y-1 text-sm text-gray-500">
+                  <p>Category: {whisky.category ?? 'Unknown'}</p>
+                  <p>Age: {whisky.age_years ?? '—'}</p>
+                  <p>Price: {whisky.cost != null ? `$${Number(whisky.cost).toFixed(2)}` : '—'}</p>
+                  <p>
+                    Provided by:{' '}
+                    {whisky.provided_by?.display_name ?? whisky.provided_by_profile_id ?? '—'}
+                  </p>
+                  <p>Average rating: {avg ?? '—'} / 10</p>
+                </div>
+              </div>
+
+              <Link
+                href={`/whiskies/upload-photo?whiskyId=${encodeURIComponent(whisky.id)}`}
+                className="rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+              >
+                Upload Photo
+              </Link>
             </div>
           </div>
 
-          <Link
-            href={`/whiskies/upload-photo?whiskyId=${encodeURIComponent(whisky.id)}`}
-            className="rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50"
-          >
-            Upload Photo
-          </Link>
-        </div>
-
-        {whisky.image_url ? (
-          <img
-            src={whisky.image_url}
-            alt={`${whisky.brand} ${whisky.name}`}
-            className="mt-4 h-40 w-full rounded-xl object-cover border shadow-sm"
-          />
-        ) : (
-          <div className="mt-4 flex h-40 w-full items-center justify-center rounded-2xl border text-sm text-gray-500">
-            No bottle photo yet
+          <div>
+            {whisky.image_url ? (
+              <img
+                src={whisky.image_url}
+                alt={`${whisky.brand} ${whisky.name}`}
+                className="aspect-[4/3] w-full rounded-2xl border object-cover shadow-sm"
+              />
+            ) : (
+              <div className="flex aspect-[4/3] w-full items-center justify-center rounded-2xl border text-sm text-gray-500">
+                No bottle photo yet
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </section>
 
       <section className="space-y-3">
