@@ -1,5 +1,14 @@
 import { supabase } from '@/lib/supabase/client'
 
+type ReviewRow = {
+  id: string
+  review_date: string
+  rating: number
+  notes: string | null
+  profile: { display_name: string }[] | null
+  session: { tasting_date: string; location: string }[] | null
+}
+
 type Review = {
   id: string
   review_date: string
@@ -19,7 +28,7 @@ type Whisky = {
 }
 
 async function getWhiskyDetail(id: string): Promise<{ whisky: Whisky; reviews: Review[] }> {
-  const [{ data: whisky, error: whiskyError }, { data: reviews, error: reviewsError }] =
+  const [{ data: whisky, error: whiskyError }, { data: reviewsData, error: reviewsError }] =
     await Promise.all([
       supabase.from('whiskies').select('*').eq('id', id).single(),
       supabase
@@ -39,9 +48,18 @@ async function getWhiskyDetail(id: string): Promise<{ whisky: Whisky; reviews: R
   if (whiskyError) throw new Error(whiskyError.message)
   if (reviewsError) throw new Error(reviewsError.message)
 
+  const normalizedReviews: Review[] = ((reviewsData ?? []) as ReviewRow[]).map((review) => ({
+    id: review.id,
+    review_date: review.review_date,
+    rating: Number(review.rating),
+    notes: review.notes,
+    profile: review.profile?.[0] ?? null,
+    session: review.session?.[0] ?? null,
+  }))
+
   return {
     whisky: whisky as Whisky,
-    reviews: (reviews ?? []) as Review[],
+    reviews: normalizedReviews,
   }
 }
 
