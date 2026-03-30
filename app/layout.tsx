@@ -99,6 +99,10 @@ export default function RootLayout({
                   Member Rankings
                 </Link>
 
+                <Link href="/provider-spend" style={navLinkStyle}>
+                  Provider Spend
+                </Link>
+
                 <Link href="/reviews/new" style={navLinkStyle}>
                   Add Review
                 </Link>
