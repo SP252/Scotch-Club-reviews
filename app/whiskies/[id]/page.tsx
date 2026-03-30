@@ -132,8 +132,8 @@ export default async function WhiskyDetailPage({
   return (
     <main className="mx-auto max-w-5xl p-6 space-y-6">
       <section className="rounded-2xl border p-6 shadow-sm">
-        <div className="grid gap-6 md:grid-cols-[1.6fr_320px] md:items-start">
-          <div>
+        <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h1 className="text-3xl font-bold">
@@ -161,15 +161,15 @@ export default async function WhiskyDetailPage({
             </div>
           </div>
 
-          <div className="md:w-[320px]">
+          <div className="w-full md:w-[280px] md:flex-shrink-0">
             {whisky.image_url ? (
               <img
                 src={whisky.image_url}
                 alt={`${whisky.brand} ${whisky.name}`}
-                className="h-56 w-full rounded-2xl border object-cover shadow-sm"
+                className="h-48 w-full rounded-xl border object-cover shadow-sm"
               />
             ) : (
-              <div className="flex h-56 w-full items-center justify-center rounded-2xl border text-sm text-gray-500">
+              <div className="flex h-48 w-full items-center justify-center rounded-xl border text-sm text-gray-500">
                 No bottle photo yet
               </div>
             )}
