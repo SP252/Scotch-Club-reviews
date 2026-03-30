@@ -1,208 +1,140 @@
 'use client'
 
-import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
-
-type MaybeArray<T> = T | T[] | null
-
-type WhiskyRow = {
-  id: string
-  brand: string
-  name: string
-  category: string | null
-  image_url: string | null
-  cost: number | null
-  provided_by_profile_id: string | null
-  provided_by: MaybeArray<{ display_name: string }>
-}
+import heic2any from 'heic2any'
 
 type Whisky = {
   id: string
   brand: string
   name: string
-  category: string | null
-  image_url: string | null
-  cost: number | null
-  provided_by_profile_id: string | null
-  provided_by: { display_name: string } | null
-  review_count: number
-  avg_rating: number | null
 }
 
-function firstOrSelf<T>(value: MaybeArray<T>): T | null {
-  if (!value) return null
-  return Array.isArray(value) ? value[0] ?? null : value
-}
-
-export default function WhiskiesPage() {
+export default function UploadBottlePhotoPage() {
   const [whiskies, setWhiskies] = useState<Whisky[]>([])
-  const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [whiskyId, setWhiskyId] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState('')
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const fromUrl = params.get('whiskyId')
+    if (fromUrl) setWhiskyId(fromUrl)
+  }, [])
 
   useEffect(() => {
     async function loadWhiskies() {
-      setLoading(true)
-      setError('')
+      const { data, error } = await supabase
+        .from('whiskies')
+        .select('id, brand, name')
+        .order('brand')
 
-      const [{ data: whiskiesData, error: whiskiesError }, { data: statsData, error: statsError }] =
-        await Promise.all([
-          supabase
-            .from('whiskies')
-            .select(`
-              id,
-              brand,
-              name,
-              category,
-              image_url,
-              cost,
-              provided_by_profile_id,
-              provided_by:profiles!whiskies_provided_by_profile_id_fkey(display_name)
-            `)
-            .order('brand', { ascending: true }),
-          supabase
-            .from('whisky_stats')
-            .select('id, review_count, avg_rating'),
-        ])
-
-      if (whiskiesError) {
-        setError(whiskiesError.message)
-        setLoading(false)
+      if (error) {
+        setMessage(error.message)
         return
       }
 
-      if (statsError) {
-        setError(statsError.message)
-        setLoading(false)
-        return
-      }
-
-      const statsMap = new Map(
-        (statsData ?? []).map((row: any) => [
-          row.id,
-          {
-            review_count: Number(row.review_count ?? 0),
-            avg_rating: row.avg_rating != null ? Number(row.avg_rating) : null,
-          },
-        ])
-      )
-
-      const merged = ((whiskiesData ?? []) as WhiskyRow[]).map((whisky) => {
-        const stats = statsMap.get(whisky.id)
-
-        return {
-          id: whisky.id,
-          brand: whisky.brand,
-          name: whisky.name,
-          category: whisky.category,
-          image_url: whisky.image_url,
-          cost: whisky.cost != null ? Number(whisky.cost) : null,
-          provided_by_profile_id: whisky.provided_by_profile_id,
-          provided_by: firstOrSelf(whisky.provided_by),
-          review_count: stats?.review_count ?? 0,
-          avg_rating: stats?.avg_rating ?? null,
-        }
-      })
-
-      setWhiskies(merged)
-      setLoading(false)
+      setWhiskies(data ?? [])
     }
 
     loadWhiskies()
   }, [])
 
-  const filteredWhiskies = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return whiskies
+  async function handleUpload(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setMessage('')
 
-    return whiskies.filter((whisky) => {
-      const haystack = [
-        whisky.brand,
-        whisky.name,
-        whisky.category ?? '',
-        whisky.provided_by?.display_name ?? '',
-        whisky.provided_by_profile_id ?? '',
-      ]
-        .join(' ')
-        .toLowerCase()
+    if (!whiskyId) return setMessage('Please choose a bottle.')
+    if (!file) return setMessage('Please choose an image.')
 
-      return haystack.includes(q)
-    })
-  }, [whiskies, search])
+    setLoading(true)
+
+    try {
+      let uploadFile = file
+
+      // 🔥 Convert HEIC → JPG
+      if (file.type === 'image/heic' || file.name.toLowerCase().endsWith('.heic')) {
+        const convertedBlob = await heic2any({
+          blob: file,
+          toType: 'image/jpeg',
+        })
+
+        uploadFile = new File(
+          [convertedBlob as Blob],
+          file.name.replace(/\.heic$/i, '.jpg'),
+          { type: 'image/jpeg' }
+        )
+      }
+
+      const fileExt = uploadFile.name.split('.').pop()?.toLowerCase() || 'jpg'
+      const filePath = `${whiskyId}.${fileExt}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('bottle-photos')
+        .upload(filePath, uploadFile, { upsert: true })
+
+      if (uploadError) throw new Error(uploadError.message)
+
+      const { data } = supabase.storage
+        .from('bottle-photos')
+        .getPublicUrl(filePath)
+
+      const { error: updateError } = await supabase
+        .from('whiskies')
+        .update({ image_url: data.publicUrl })
+        .eq('id', whiskyId)
+
+      if (updateError) throw new Error(updateError.message)
+
+      setMessage('Photo uploaded successfully.')
+      setFile(null)
+
+      const input = document.getElementById('photo-input') as HTMLInputElement
+      if (input) input.value = ''
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Upload failed.')
+    }
+
+    setLoading(false)
+  }
 
   return (
-    <main className="mx-auto max-w-6xl p-6">
-      <div className="mb-6 space-y-3">
-        <div>
-          <h1 className="text-3xl font-bold">Whiskies</h1>
-          <p className="text-sm text-gray-500">Browse the club bottle list</p>
-        </div>
+    <main className="mx-auto max-w-2xl p-6">
+      <h1 className="mb-2 text-3xl font-bold">Upload Bottle Photo</h1>
+
+      <form onSubmit={handleUpload} className="space-y-4 rounded-2xl border p-6">
+        <select
+          className="w-full rounded-xl border p-3"
+          value={whiskyId}
+          onChange={(e) => setWhiskyId(e.target.value)}
+        >
+          <option value="">Select bottle</option>
+          {whiskies.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.brand} {w.name}
+            </option>
+          ))}
+        </select>
 
         <input
-          type="text"
-          placeholder="Search bottles, categories, or providers..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          id="photo-input"
+          type="file"
+          accept="image/*,.heic"
           className="w-full rounded-xl border p-3"
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
 
-        <p className="text-sm text-gray-500">
-          Showing {filteredWhiskies.length} of {whiskies.length} bottles
-        </p>
-      </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="rounded-xl border px-4 py-2"
+        >
+          {loading ? 'Uploading...' : 'Upload Photo'}
+        </button>
 
-      {loading ? (
-        <div className="rounded-2xl border p-6 text-sm text-gray-500">Loading whiskies...</div>
-      ) : error ? (
-        <div className="rounded-2xl border p-6 text-sm text-red-600">{error}</div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredWhiskies.map((whisky) => (
-            <Link
-              key={whisky.id}
-              href={`/whiskies/${whisky.id}`}
-              className="rounded-2xl border p-4 shadow-sm transition hover:shadow-md"
-            >
-              {whisky.image_url ? (
-                <img
-                  src={whisky.image_url}
-                  alt={`${whisky.brand} ${whisky.name}`}
-                  className="mb-3 aspect-[4/3] w-full rounded-xl border object-cover"
-                />
-              ) : (
-                <div className="mb-3 flex aspect-[4/3] w-full items-center justify-center rounded-xl border text-sm text-gray-500">
-                  No photo
-                </div>
-              )}
-
-              <div className="space-y-1">
-                <h2 className="font-semibold">
-                  {whisky.brand} {whisky.name}
-                </h2>
-
-                <p className="text-sm text-gray-500">
-                  {whisky.category ?? 'Unknown category'}
-                </p>
-
-                <p className="text-sm text-gray-500">
-                  Price: {whisky.cost != null ? `$${whisky.cost.toFixed(2)}` : '—'}
-                </p>
-
-                <p className="text-sm text-gray-500">
-                  Provided by:{' '}
-                  {whisky.provided_by?.display_name ?? whisky.provided_by_profile_id ?? '—'}
-                </p>
-
-                <p className="text-sm">
-                  Average: {whisky.avg_rating != null ? whisky.avg_rating.toFixed(2) : '—'} · Reviews:{' '}
-                  {whisky.review_count}
-                </p>
-              </div>
-            </Link>
-          ))}
-        </div>
-      )}
+        {message && <p className="text-sm">{message}</p>}
+      </form>
     </main>
   )
 }
