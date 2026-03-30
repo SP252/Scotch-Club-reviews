@@ -9,6 +9,39 @@ type Whisky = {
   name: string
 }
 
+function isHeicFile(file: File) {
+  const lower = file.name.toLowerCase()
+  return (
+    file.type === 'image/heic' ||
+    file.type === 'image/heif' ||
+    lower.endsWith('.heic') ||
+    lower.endsWith('.heif')
+  )
+}
+
+async function convertHeicToJpg(file: File): Promise<File> {
+  const heic2anyModule = await import('heic2any')
+  const heic2any = heic2anyModule.default
+
+  const result = await heic2any({
+    blob: file,
+    toType: 'image/jpeg',
+    quality: 0.9,
+  })
+
+  const blob = Array.isArray(result) ? result[0] : result
+
+  if (!(blob instanceof Blob)) {
+    throw new Error('HEIC conversion did not return an image file.')
+  }
+
+  const newName = file.name.replace(/\.(heic|heif)$/i, '.jpg')
+
+  return new File([blob], newName, {
+    type: 'image/jpeg',
+  })
+}
+
 export default function UploadBottlePhotoPage() {
   const [whiskies, setWhiskies] = useState<Whisky[]>([])
   const [whiskyId, setWhiskyId] = useState('')
@@ -61,41 +94,37 @@ export default function UploadBottlePhotoPage() {
     try {
       let uploadFile = file
 
-      const isHeic =
-        file.type === 'image/heic' ||
-        file.type === 'image/heif' ||
-        file.name.toLowerCase().endsWith('.heic') ||
-        file.name.toLowerCase().endsWith('.heif')
+      if (isHeicFile(file)) {
+        setMessage('Converting HEIC photo...')
+        uploadFile = await convertHeicToJpg(file)
+      }
 
-      if (isHeic) {
-        const heic2any = (await import('heic2any')).default
+      const lowerName = uploadFile.name.toLowerCase()
+      const allowed =
+        lowerName.endsWith('.jpg') ||
+        lowerName.endsWith('.jpeg') ||
+        lowerName.endsWith('.png') ||
+        lowerName.endsWith('.webp')
 
-        const convertedBlob = await heic2any({
-          blob: file,
-          toType: 'image/jpeg',
-        })
-
-        const finalBlob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob
-
-        uploadFile = new File(
-          [finalBlob as Blob],
-          file.name.replace(/\.(heic|heif)$/i, '.jpg'),
-          { type: 'image/jpeg' }
-        )
+      if (!allowed) {
+        throw new Error('Please upload a JPG, PNG, WEBP, or HEIC image.')
       }
 
       const fileExt = uploadFile.name.split('.').pop()?.toLowerCase() || 'jpg'
       const safeExt = fileExt.replace(/[^a-z0-9]/g, '') || 'jpg'
       const filePath = `${whiskyId}.${safeExt}`
 
+      setMessage('Uploading photo...')
+
       const { error: uploadError } = await supabase.storage
         .from('bottle-photos')
-        .upload(filePath, uploadFile, { upsert: true })
+        .upload(filePath, uploadFile, {
+          upsert: true,
+          contentType: uploadFile.type || 'image/jpeg',
+        })
 
       if (uploadError) {
-        setMessage(uploadError.message)
-        setLoading(false)
-        return
+        throw new Error(uploadError.message)
       }
 
       const { data: publicUrlData } = supabase.storage
@@ -110,9 +139,7 @@ export default function UploadBottlePhotoPage() {
         .eq('id', whiskyId)
 
       if (updateError) {
-        setMessage(updateError.message)
-        setLoading(false)
-        return
+        throw new Error(updateError.message)
       }
 
       setMessage('Photo uploaded successfully.')
@@ -121,7 +148,14 @@ export default function UploadBottlePhotoPage() {
       const input = document.getElementById('photo-input') as HTMLInputElement | null
       if (input) input.value = ''
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Upload failed.')
+      const text =
+        err instanceof Error ? err.message : 'Upload failed.'
+
+      if (text.toLowerCase().includes('heic')) {
+        setMessage(`HEIC conversion failed: ${text}`)
+      } else {
+        setMessage(text)
+      }
     }
 
     setLoading(false)
@@ -131,7 +165,7 @@ export default function UploadBottlePhotoPage() {
     <main className="mx-auto max-w-2xl p-6">
       <h1 className="mb-2 text-3xl font-bold">Upload Bottle Photo</h1>
       <p className="mb-6 text-sm text-gray-500">
-        Select a whisky and upload an image for it.
+        Select a whisky and upload an image for it. HEIC photos from iPhone should convert automatically.
       </p>
 
       <form
@@ -170,7 +204,7 @@ export default function UploadBottlePhotoPage() {
           disabled={loading}
           className="rounded-xl border px-4 py-2 font-medium disabled:opacity-50"
         >
-          {loading ? 'Uploading...' : 'Upload Photo'}
+          {loading ? 'Working...' : 'Upload Photo'}
         </button>
 
         {message ? <p className="text-sm">{message}</p> : null}
