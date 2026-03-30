@@ -43,11 +43,40 @@ function yearFromDate(date: string | null | undefined) {
   return String(date).slice(0, 4)
 }
 
+function normalizeCategory(category: string | null) {
+  const raw = (category ?? '').trim()
+  if (!raw) return 'Other'
+
+  const lower = raw.toLowerCase()
+
+  if (lower.includes('scotch')) return 'Scotch'
+  if (lower.includes('bourbon')) return 'Bourbon'
+  if (lower.includes('irish')) return 'Irish'
+  if (lower.includes('japanese')) return 'Japanese'
+  if (lower.includes('american')) return 'American'
+  if (lower.includes('canadian')) return 'Canadian'
+  if (lower.includes('rye')) return 'Rye'
+
+  return raw
+}
+
+const categoryOrder = [
+  'Scotch',
+  'Bourbon',
+  'American',
+  'Irish',
+  'Japanese',
+  'Canadian',
+  'Rye',
+  'Other',
+]
+
 export default function MemberRankingsPage() {
   const [reviews, setReviews] = useState<Review[]>([])
   const [people, setPeople] = useState<PersonOption[]>([])
   const [selectedPersonId, setSelectedPersonId] = useState('')
   const [selectedYear, setSelectedYear] = useState('all')
+  const [selectedCategory, setSelectedCategory] = useState('all')
   const [mode, setMode] = useState<'top' | 'bottom'>('top')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -131,11 +160,37 @@ export default function MemberRankingsPage() {
     return uniqueYears
   }, [reviews])
 
+  const categories = useMemo(() => {
+    const found = Array.from(
+      new Set(
+        reviews
+          .map((review) => normalizeCategory(review.whisky?.category ?? null))
+          .filter(Boolean)
+      )
+    )
+
+    return found.sort((a, b) => {
+      const aIndex = categoryOrder.indexOf(a)
+      const bIndex = categoryOrder.indexOf(b)
+
+      if (aIndex === -1 && bIndex === -1) return a.localeCompare(b)
+      if (aIndex === -1) return 1
+      if (bIndex === -1) return -1
+      return aIndex - bIndex
+    })
+  }, [reviews])
+
   const filteredReviews = useMemo(() => {
     let result = reviews.filter((review) => review.profile_id === selectedPersonId)
 
     if (selectedYear !== 'all') {
       result = result.filter((review) => yearFromDate(review.review_date) === selectedYear)
+    }
+
+    if (selectedCategory !== 'all') {
+      result = result.filter(
+        (review) => normalizeCategory(review.whisky?.category ?? null) === selectedCategory
+      )
     }
 
     result = [...result].sort((a, b) => {
@@ -149,7 +204,7 @@ export default function MemberRankingsPage() {
     })
 
     return result.slice(0, 10)
-  }, [reviews, selectedPersonId, selectedYear, mode])
+  }, [reviews, selectedPersonId, selectedYear, selectedCategory, mode])
 
   const selectedPerson = people.find((p) => p.id === selectedPersonId)
 
@@ -185,7 +240,7 @@ export default function MemberRankingsPage() {
             marginBottom: 18,
           }}
         >
-          See each member&apos;s top 10 or bottom 10 reviews by year or all-time.
+          See each member&apos;s top 10 or bottom 10 reviews by year, all-time, and whiskey type.
         </p>
 
         <div
@@ -269,6 +324,39 @@ export default function MemberRankingsPage() {
                 marginBottom: 6,
               }}
             >
+              Whiskey Type
+            </label>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '12px 14px',
+                border: '1px solid rgba(148, 163, 184, 0.28)',
+                borderRadius: 12,
+                fontSize: 14,
+                background: 'rgba(15, 23, 36, 0.72)',
+                color: '#f8fafc',
+              }}
+            >
+              <option value="all">All Types</option>
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label
+              style={{
+                display: 'block',
+                fontSize: 13,
+                color: '#cbd5e1',
+                marginBottom: 6,
+              }}
+            >
               Ranking Type
             </label>
             <select
@@ -326,7 +414,8 @@ export default function MemberRankingsPage() {
             }}
           >
             {selectedPerson?.display_name ?? 'Member'} — {mode === 'top' ? 'Top 10' : 'Bottom 10'}{' '}
-            {selectedYear === 'all' ? 'All-time Reviews' : `Reviews for ${selectedYear}`}
+            {selectedYear === 'all' ? 'All-time' : selectedYear}
+            {selectedCategory === 'all' ? '' : ` · ${selectedCategory}`}
           </div>
 
           {filteredReviews.length === 0 ? (
@@ -339,7 +428,7 @@ export default function MemberRankingsPage() {
                 background: 'rgba(15, 23, 36, 0.72)',
               }}
             >
-              No reviews found for that member/year combination.
+              No reviews found for that combination of member, year, and whiskey type.
             </div>
           ) : (
             <div style={{ display: 'grid', gap: 12 }}>
@@ -389,6 +478,7 @@ export default function MemberRankingsPage() {
                       >
                         {review.review_date}
                         {review.session?.location ? ` · ${review.session.location}` : ''}
+                        {review.whisky?.category ? ` · ${normalizeCategory(review.whisky.category)}` : ''}
                       </div>
 
                       {review.notes ? (
