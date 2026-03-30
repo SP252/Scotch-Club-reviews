@@ -11,7 +11,8 @@
     "@supabase/supabase-js": "latest",
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "heic2any": "^0.0.4"
   },
   "devDependencies": {
     "@types/node": "latest",
@@ -20,4 +21,4 @@
     "typescript": "latest"
   }
 }
-"heic2any": "^0.0.4"
+
