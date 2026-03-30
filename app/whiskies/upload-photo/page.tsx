@@ -59,13 +59,38 @@ export default function UploadBottlePhotoPage() {
     setLoading(true)
 
     try {
-      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+      let uploadFile = file
+
+      const isHeic =
+        file.type === 'image/heic' ||
+        file.type === 'image/heif' ||
+        file.name.toLowerCase().endsWith('.heic') ||
+        file.name.toLowerCase().endsWith('.heif')
+
+      if (isHeic) {
+        const heic2any = (await import('heic2any')).default
+
+        const convertedBlob = await heic2any({
+          blob: file,
+          toType: 'image/jpeg',
+        })
+
+        const finalBlob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob
+
+        uploadFile = new File(
+          [finalBlob as Blob],
+          file.name.replace(/\.(heic|heif)$/i, '.jpg'),
+          { type: 'image/jpeg' }
+        )
+      }
+
+      const fileExt = uploadFile.name.split('.').pop()?.toLowerCase() || 'jpg'
       const safeExt = fileExt.replace(/[^a-z0-9]/g, '') || 'jpg'
       const filePath = `${whiskyId}.${safeExt}`
 
       const { error: uploadError } = await supabase.storage
         .from('bottle-photos')
-        .upload(filePath, file, { upsert: true })
+        .upload(filePath, uploadFile, { upsert: true })
 
       if (uploadError) {
         setMessage(uploadError.message)
@@ -90,7 +115,7 @@ export default function UploadBottlePhotoPage() {
         return
       }
 
-      setMessage('Bottle photo uploaded successfully.')
+      setMessage('Photo uploaded successfully.')
       setFile(null)
 
       const input = document.getElementById('photo-input') as HTMLInputElement | null
@@ -134,7 +159,7 @@ export default function UploadBottlePhotoPage() {
           <input
             id="photo-input"
             type="file"
-            accept="image/*"
+            accept="image/*,.heic,.heif"
             className="w-full rounded-xl border p-3"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
@@ -148,7 +173,7 @@ export default function UploadBottlePhotoPage() {
           {loading ? 'Uploading...' : 'Upload Photo'}
         </button>
 
-        {message && <p className="text-sm">{message}</p>}
+        {message ? <p className="text-sm">{message}</p> : null}
       </form>
     </main>
   )
