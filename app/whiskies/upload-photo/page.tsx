@@ -100,4 +100,121 @@ export default function UploadBottlePhotoPage() {
         try {
           uploadFile = await convertHeicToJpeg(file)
         } catch (err) {
-          const text = err instanceof Error ? err.message : 'Unknown conversion
+          const text =
+            err instanceof Error ? err.message : 'Unknown conversion error.'
+
+          setMessage(
+            `HEIC conversion failed. Please convert the photo to JPG on your phone first, then upload it. Details: ${text}`
+          )
+          setLoading(false)
+          return
+        }
+      }
+
+      const lowerName = uploadFile.name.toLowerCase()
+      const allowed =
+        lowerName.endsWith('.jpg') ||
+        lowerName.endsWith('.jpeg') ||
+        lowerName.endsWith('.png') ||
+        lowerName.endsWith('.webp')
+
+      if (!allowed) {
+        throw new Error('Please upload a JPG, PNG, WEBP, or HEIC image.')
+      }
+
+      const fileExt = uploadFile.name.split('.').pop()?.toLowerCase() || 'jpg'
+      const safeExt = fileExt.replace(/[^a-z0-9]/g, '') || 'jpg'
+      const filePath = `${whiskyId}.${safeExt}`
+
+      setMessage('Uploading photo...')
+
+      const { error: uploadError } = await supabase.storage
+        .from('bottle-photos')
+        .upload(filePath, uploadFile, {
+          upsert: true,
+          contentType: uploadFile.type || 'image/jpeg',
+        })
+
+      if (uploadError) {
+        throw new Error(uploadError.message)
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from('bottle-photos')
+        .getPublicUrl(filePath)
+
+      const imageUrl = publicUrlData.publicUrl
+
+      const { error: updateError } = await supabase
+        .from('whiskies')
+        .update({ image_url: imageUrl })
+        .eq('id', whiskyId)
+
+      if (updateError) {
+        throw new Error(updateError.message)
+      }
+
+      setMessage('Photo uploaded successfully.')
+      setFile(null)
+
+      const input = document.getElementById('photo-input') as HTMLInputElement | null
+      if (input) input.value = ''
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Upload failed.')
+    }
+
+    setLoading(false)
+  }
+
+  return (
+    <main className="mx-auto max-w-2xl p-6">
+      <h1 className="mb-2 text-3xl font-bold">Upload Bottle Photo</h1>
+      <p className="mb-6 text-sm text-gray-500">
+        Select a whisky and upload an image for it. HEIC photos from iPhone will be
+        attempted automatically, but if conversion fails, save as JPG first.
+      </p>
+
+      <form
+        onSubmit={handleUpload}
+        className="space-y-4 rounded-2xl border p-6 shadow-sm"
+      >
+        <div>
+          <label className="mb-2 block text-sm font-medium">Bottle</label>
+          <select
+            className="w-full rounded-xl border p-3"
+            value={whiskyId}
+            onChange={(e) => setWhiskyId(e.target.value)}
+          >
+            <option value="">Select bottle</option>
+            {whiskies.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.brand} {w.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium">Photo</label>
+          <input
+            id="photo-input"
+            type="file"
+            accept="image/*,.heic,.heif"
+            className="w-full rounded-xl border p-3"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="rounded-xl border px-4 py-2 font-medium disabled:opacity-50"
+        >
+          {loading ? 'Working...' : 'Upload Photo'}
+        </button>
+
+        {message ? <p className="text-sm">{message}</p> : null}
+      </form>
+    </main>
+  )
+}
