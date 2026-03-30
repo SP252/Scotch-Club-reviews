@@ -4,112 +4,157 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 
-type WhiskyStat = {
+type MaybeArray<T> = T | T[] | null
+
+type ReviewRow = {
   id: string
-  brand: string
-  name: string
-  category: string | null
-  review_count: number
-  avg_rating: number | null
+  review_date: string
+  rating: number
+  notes: string | null
+  profile_id: string | null
+  profile: MaybeArray<{ display_name: string }>
+  whisky: MaybeArray<{ id: string; brand: string; name: string; category: string | null }>
+  session: MaybeArray<{ tasting_date: string; location: string }>
 }
 
-function normalizeCategory(category: string | null) {
-  const raw = (category ?? '').trim()
-  if (!raw) return 'Other'
-
-  const lower = raw.toLowerCase()
-
-  if (lower.includes('scotch')) return 'Scotch'
-  if (lower.includes('bourbon')) return 'Bourbon'
-  if (lower.includes('irish')) return 'Irish'
-  if (lower.includes('japanese')) return 'Japanese'
-  if (lower.includes('american')) return 'American'
-  if (lower.includes('canadian')) return 'Canadian'
-  if (lower.includes('rye')) return 'Rye'
-
-  return raw
+type Review = {
+  id: string
+  review_date: string
+  rating: number
+  notes: string | null
+  profile_id: string | null
+  profile: { display_name: string } | null
+  whisky: { id: string; brand: string; name: string; category: string | null } | null
+  session: { tasting_date: string; location: string } | null
 }
 
-const categoryOrder = [
-  'Scotch',
-  'Bourbon',
-  'American',
-  'Irish',
-  'Japanese',
-  'Canadian',
-  'Rye',
-  'Other',
-]
+type PersonOption = {
+  id: string
+  display_name: string
+}
 
-export default function LeaderboardPage() {
-  const [whiskies, setWhiskies] = useState<WhiskyStat[]>([])
+function firstOrSelf<T>(value: MaybeArray<T>): T | null {
+  if (!value) return null
+  return Array.isArray(value) ? value[0] ?? null : value
+}
+
+function yearFromDate(date: string | null | undefined) {
+  if (!date) return ''
+  return String(date).slice(0, 4)
+}
+
+export default function MemberRankingsPage() {
+  const [reviews, setReviews] = useState<Review[]>([])
+  const [people, setPeople] = useState<PersonOption[]>([])
+  const [selectedPersonId, setSelectedPersonId] = useState('')
+  const [selectedYear, setSelectedYear] = useState('all')
+  const [mode, setMode] = useState<'top' | 'bottom'>('top')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    async function loadLeaderboard() {
+    async function loadData() {
       setLoading(true)
       setError('')
 
-      const { data, error } = await supabase
-        .from('whisky_stats')
-        .select('id, brand, name, category, review_count, avg_rating')
-        .gte('review_count', 1)
-        .order('avg_rating', { ascending: false })
+      const [{ data: peopleData, error: peopleError }, { data: reviewsData, error: reviewsError }] =
+        await Promise.all([
+          supabase
+            .from('profiles')
+            .select('id, display_name')
+            .order('display_name', { ascending: true }),
+          supabase
+            .from('reviews')
+            .select(`
+              id,
+              review_date,
+              rating,
+              notes,
+              profile_id,
+              profile:profiles(display_name),
+              whisky:whiskies(id, brand, name, category),
+              session:tasting_sessions(tasting_date, location)
+            `)
+            .order('review_date', { ascending: false }),
+        ])
 
-      if (error) {
-        setError(error.message)
+      if (peopleError) {
+        setError(peopleError.message)
         setLoading(false)
         return
       }
 
-      const normalized = (data ?? []).map((row: any) => ({
-        id: row.id,
-        brand: row.brand,
-        name: row.name,
-        category: row.category,
-        review_count: Number(row.review_count ?? 0),
-        avg_rating: row.avg_rating != null ? Number(row.avg_rating) : null,
+      if (reviewsError) {
+        setError(reviewsError.message)
+        setLoading(false)
+        return
+      }
+
+      const normalizedPeople: PersonOption[] = (peopleData ?? []).map((p: any) => ({
+        id: p.id,
+        display_name: p.display_name,
       }))
 
-      setWhiskies(normalized)
+      const normalizedReviews: Review[] = ((reviewsData ?? []) as ReviewRow[]).map((review) => ({
+        id: review.id,
+        review_date: review.review_date,
+        rating: Number(review.rating),
+        notes: review.notes,
+        profile_id: review.profile_id,
+        profile: firstOrSelf(review.profile),
+        whisky: firstOrSelf(review.whisky),
+        session: firstOrSelf(review.session),
+      }))
+
+      setPeople(normalizedPeople)
+      setReviews(normalizedReviews)
+
+      if (normalizedPeople.length > 0) {
+        setSelectedPersonId((current) => current || normalizedPeople[0].id)
+      }
+
       setLoading(false)
     }
 
-    loadLeaderboard()
+    loadData()
   }, [])
 
-  const groupedWhiskies = useMemo(() => {
-    const groups = new Map<string, WhiskyStat[]>()
+  const years = useMemo(() => {
+    const uniqueYears = Array.from(
+      new Set(
+        reviews
+          .map((r) => yearFromDate(r.review_date))
+          .filter(Boolean)
+      )
+    ).sort((a, b) => Number(b) - Number(a))
 
-    for (const whisky of whiskies) {
-      const category = normalizeCategory(whisky.category)
-      if (!groups.has(category)) groups.set(category, [])
-      groups.get(category)!.push(whisky)
+    return uniqueYears
+  }, [reviews])
+
+  const filteredReviews = useMemo(() => {
+    let result = reviews.filter((review) => review.profile_id === selectedPersonId)
+
+    if (selectedYear !== 'all') {
+      result = result.filter((review) => yearFromDate(review.review_date) === selectedYear)
     }
 
-    for (const [, items] of groups) {
-      items.sort((a, b) => {
-        const aRating = a.avg_rating ?? -1
-        const bRating = b.avg_rating ?? -1
-        if (bRating !== aRating) return bRating - aRating
-        return `${a.brand} ${a.name}`.localeCompare(`${b.brand} ${b.name}`)
-      })
-    }
+    result = [...result].sort((a, b) => {
+      if (mode === 'top') {
+        if (b.rating !== a.rating) return b.rating - a.rating
+      } else {
+        if (a.rating !== b.rating) return a.rating - b.rating
+      }
 
-    return Array.from(groups.entries()).sort((a, b) => {
-      const aIndex = categoryOrder.indexOf(a[0])
-      const bIndex = categoryOrder.indexOf(b[0])
-
-      if (aIndex === -1 && bIndex === -1) return a[0].localeCompare(b[0])
-      if (aIndex === -1) return 1
-      if (bIndex === -1) return -1
-      return aIndex - bIndex
+      return a.review_date.localeCompare(b.review_date)
     })
-  }, [whiskies])
+
+    return result.slice(0, 10)
+  }, [reviews, selectedPersonId, selectedYear, mode])
+
+  const selectedPerson = people.find((p) => p.id === selectedPersonId)
 
   return (
-    <main>
+    <main style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
       <section
         style={{
           border: '1px solid rgba(148, 163, 184, 0.16)',
@@ -129,7 +174,7 @@ export default function LeaderboardPage() {
             color: '#f8fafc',
           }}
         >
-          Leaderboard
+          Member Rankings
         </h1>
 
         <p
@@ -137,11 +182,113 @@ export default function LeaderboardPage() {
             fontSize: 14,
             color: '#cbd5e1',
             marginTop: 6,
-            marginBottom: 0,
+            marginBottom: 18,
           }}
         >
-          Top-rated bottles grouped by category
+          See each member&apos;s top 10 or bottom 10 reviews by year or all-time.
         </p>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: 12,
+          }}
+        >
+          <div>
+            <label
+              style={{
+                display: 'block',
+                fontSize: 13,
+                color: '#cbd5e1',
+                marginBottom: 6,
+              }}
+            >
+              Member
+            </label>
+            <select
+              value={selectedPersonId}
+              onChange={(e) => setSelectedPersonId(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '12px 14px',
+                border: '1px solid rgba(148, 163, 184, 0.28)',
+                borderRadius: 12,
+                fontSize: 14,
+                background: 'rgba(15, 23, 36, 0.72)',
+                color: '#f8fafc',
+              }}
+            >
+              {people.map((person) => (
+                <option key={person.id} value={person.id}>
+                  {person.display_name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label
+              style={{
+                display: 'block',
+                fontSize: 13,
+                color: '#cbd5e1',
+                marginBottom: 6,
+              }}
+            >
+              Year
+            </label>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '12px 14px',
+                border: '1px solid rgba(148, 163, 184, 0.28)',
+                borderRadius: 12,
+                fontSize: 14,
+                background: 'rgba(15, 23, 36, 0.72)',
+                color: '#f8fafc',
+              }}
+            >
+              <option value="all">All-time</option>
+              {years.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label
+              style={{
+                display: 'block',
+                fontSize: 13,
+                color: '#cbd5e1',
+                marginBottom: 6,
+              }}
+            >
+              Ranking Type
+            </label>
+            <select
+              value={mode}
+              onChange={(e) => setMode(e.target.value as 'top' | 'bottom')}
+              style={{
+                width: '100%',
+                padding: '12px 14px',
+                border: '1px solid rgba(148, 163, 184, 0.28)',
+                borderRadius: 12,
+                fontSize: 14,
+                background: 'rgba(15, 23, 36, 0.72)',
+                color: '#f8fafc',
+              }}
+            >
+              <option value="top">Top 10</option>
+              <option value="bottom">Bottom 10</option>
+            </select>
+          </div>
+        </div>
       </section>
 
       {loading ? (
@@ -154,7 +301,7 @@ export default function LeaderboardPage() {
             background: 'rgba(15, 23, 36, 0.72)',
           }}
         >
-          Loading leaderboard...
+          Loading rankings...
         </div>
       ) : error ? (
         <div
@@ -168,118 +315,116 @@ export default function LeaderboardPage() {
         >
           {error}
         </div>
-      ) : groupedWhiskies.length === 0 ? (
-        <div
-          style={{
-            border: '1px solid rgba(148, 163, 184, 0.16)',
-            borderRadius: 16,
-            padding: 16,
-            color: '#cbd5e1',
-            background: 'rgba(15, 23, 36, 0.72)',
-          }}
-        >
-          No leaderboard data yet.
-        </div>
       ) : (
-        <div style={{ display: 'grid', gap: 28 }}>
-          {groupedWhiskies.map(([category, items]) => (
-            <section key={category}>
-              <div
-                style={{
-                  marginBottom: 12,
-                  paddingBottom: 8,
-                  borderBottom: '1px solid rgba(148, 163, 184, 0.16)',
-                }}
-              >
-                <h2
-                  style={{
-                    margin: 0,
-                    fontSize: 24,
-                    fontWeight: 800,
-                    color: '#f8fafc',
-                  }}
-                >
-                  {category}
-                </h2>
-                <p
-                  style={{
-                    margin: '4px 0 0',
-                    fontSize: 13,
-                    color: '#cbd5e1',
-                  }}
-                >
-                  {items.length} bottle{items.length === 1 ? '' : 's'}
-                </p>
-              </div>
+        <>
+          <div
+            style={{
+              marginBottom: 14,
+              color: '#e5e7eb',
+              fontSize: 16,
+              fontWeight: 600,
+            }}
+          >
+            {selectedPerson?.display_name ?? 'Member'} — {mode === 'top' ? 'Top 10' : 'Bottom 10'}{' '}
+            {selectedYear === 'all' ? 'All-time Reviews' : `Reviews for ${selectedYear}`}
+          </div>
 
-              <div style={{ display: 'grid', gap: 12 }}>
-                {items.map((whisky, index) => (
-                  <Link
-                    key={whisky.id}
-                    href={`/whiskies/${whisky.id}`}
+          {filteredReviews.length === 0 ? (
+            <div
+              style={{
+                border: '1px solid rgba(148, 163, 184, 0.16)',
+                borderRadius: 16,
+                padding: 16,
+                color: '#cbd5e1',
+                background: 'rgba(15, 23, 36, 0.72)',
+              }}
+            >
+              No reviews found for that member/year combination.
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 12 }}>
+              {filteredReviews.map((review, index) => (
+                <Link
+                  key={review.id}
+                  href={review.whisky ? `/whiskies/${review.whisky.id}` : '#'}
+                  style={{
+                    display: 'block',
+                    textDecoration: 'none',
+                    color: '#f8fafc',
+                    border: '1px solid rgba(148, 163, 184, 0.15)',
+                    borderRadius: 18,
+                    padding: 16,
+                    background:
+                      'linear-gradient(180deg, rgba(30,41,59,0.86), rgba(30,27,24,0.86))',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.20)',
+                  }}
+                >
+                  <div
                     style={{
-                      display: 'block',
-                      textDecoration: 'none',
-                      color: '#f8fafc',
-                      border: '1px solid rgba(148, 163, 184, 0.15)',
-                      borderRadius: 18,
-                      padding: 16,
-                      background:
-                        'linear-gradient(180deg, rgba(30,41,59,0.86), rgba(30,27,24,0.86))',
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.20)',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      justifyContent: 'space-between',
+                      gap: 16,
+                      flexWrap: 'wrap',
                     }}
                   >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 16,
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <div>
-                        <div
-                          style={{
-                            fontSize: 18,
-                            fontWeight: 700,
-                            color: '#f8fafc',
-                            marginBottom: 4,
-                          }}
-                        >
-                          #{index + 1} · {whisky.brand} {whisky.name}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 14,
-                            color: '#cbd5e1',
-                          }}
-                        >
-                          {whisky.review_count} review{whisky.review_count === 1 ? '' : 's'}
-                        </div>
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 18,
+                          fontWeight: 700,
+                          color: '#f8fafc',
+                          marginBottom: 4,
+                        }}
+                      >
+                        #{index + 1} · {review.whisky ? `${review.whisky.brand} ${review.whisky.name}` : 'Unknown bottle'}
                       </div>
 
                       <div
                         style={{
-                          border: '1px solid rgba(148, 163, 184, 0.25)',
-                          borderRadius: 9999,
-                          padding: '8px 14px',
                           fontSize: 14,
-                          fontWeight: 700,
-                          color: '#f8fafc',
-                          background: 'rgba(255,255,255,0.04)',
-                          whiteSpace: 'nowrap',
+                          color: '#cbd5e1',
+                          marginBottom: 4,
                         }}
                       >
-                        {whisky.avg_rating != null ? whisky.avg_rating.toFixed(2) : '—'} / 10
+                        {review.review_date}
+                        {review.session?.location ? ` · ${review.session.location}` : ''}
                       </div>
+
+                      {review.notes ? (
+                        <div
+                          style={{
+                            fontSize: 14,
+                            color: '#e5e7eb',
+                            lineHeight: 1.5,
+                            maxWidth: 700,
+                          }}
+                        >
+                          {review.notes}
+                        </div>
+                      ) : null}
                     </div>
-                  </Link>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
+
+                    <div
+                      style={{
+                        border: '1px solid rgba(148, 163, 184, 0.25)',
+                        borderRadius: 9999,
+                        padding: '8px 14px',
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: '#f8fafc',
+                        background: 'rgba(255,255,255,0.04)',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {review.rating.toFixed(1)} / 10
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </main>
   )
