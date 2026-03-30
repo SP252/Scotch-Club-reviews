@@ -129,14 +129,7 @@ export default function WhiskiesPage() {
       const brandAndName = `${brand} ${name}`
 
       const searchable = normalize(
-        [
-          brand,
-          name,
-          brandAndName,
-          category,
-          providerName,
-          providerId,
-        ].join(' ')
+        [brand, name, brandAndName, category, providerName, providerId].join(' ')
       )
 
       return searchable.includes(q)
@@ -180,10 +173,10 @@ export default function WhiskiesPage() {
                 <img
                   src={whisky.image_url}
                   alt={`${whisky.brand} ${whisky.name}`}
-                  className="mb-3 aspect-[4/3] w-full rounded-xl border object-cover"
+                  className="mb-3 h-36 w-full rounded-xl border object-cover"
                 />
               ) : (
-                <div className="mb-3 flex aspect-[4/3] w-full items-center justify-center rounded-xl border text-sm text-gray-500">
+                <div className="mb-3 flex h-36 w-full items-center justify-center rounded-xl border text-sm text-gray-500">
                   No photo
                 </div>
               )}
