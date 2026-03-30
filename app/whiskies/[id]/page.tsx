@@ -130,46 +130,102 @@ export default async function WhiskyDetailPage({
       : null
 
   return (
-    <main className="mx-auto max-w-5xl p-6 space-y-6">
-      <section className="rounded-2xl border p-6 shadow-sm">
-        <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-4">
+    <main style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
+      <section
+        style={{
+          border: '1px solid #e5e7eb',
+          borderRadius: 16,
+          padding: 24,
+          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+          marginBottom: 24,
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            gap: 24,
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ flex: '1 1 420px', minWidth: 320 }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: 16,
+                flexWrap: 'wrap',
+              }}
+            >
               <div>
-                <h1 className="text-3xl font-bold">
+                <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0 }}>
                   {whisky.brand} {whisky.name}
                 </h1>
 
-                <div className="mt-3 space-y-1 text-sm text-gray-500">
-                  <p>Category: {whisky.category ?? 'Unknown'}</p>
-                  <p>Age: {whisky.age_years ?? '—'}</p>
-                  <p>Price: {whisky.cost != null ? `$${Number(whisky.cost).toFixed(2)}` : '—'}</p>
-                  <p>
+                <div style={{ marginTop: 16, color: '#4b5563', fontSize: 15, lineHeight: 1.8 }}>
+                  <div>Category: {whisky.category ?? 'Unknown'}</div>
+                  <div>Age: {whisky.age_years ?? '—'}</div>
+                  <div>
+                    Price: {whisky.cost != null ? `$${Number(whisky.cost).toFixed(2)}` : '—'}
+                  </div>
+                  <div>
                     Provided by:{' '}
                     {whisky.provided_by?.display_name ?? whisky.provided_by_profile_id ?? '—'}
-                  </p>
-                  <p>Average rating: {avg ?? '—'} / 10</p>
+                  </div>
+                  <div>Average rating: {avg ?? '—'} / 10</div>
                 </div>
               </div>
 
               <Link
                 href={`/whiskies/upload-photo?whiskyId=${encodeURIComponent(whisky.id)}`}
-                className="rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+                style={{
+                  display: 'inline-block',
+                  padding: '10px 16px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: 12,
+                  textDecoration: 'none',
+                  color: '#111827',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  background: '#fff',
+                  whiteSpace: 'nowrap',
+                }}
               >
                 Upload Photo
               </Link>
             </div>
           </div>
 
-          <div className="w-full md:w-[280px] md:flex-shrink-0">
+          <div style={{ width: 320, flexShrink: 0 }}>
             {whisky.image_url ? (
               <img
                 src={whisky.image_url}
                 alt={`${whisky.brand} ${whisky.name}`}
-                className="h-48 w-full rounded-xl border object-cover shadow-sm"
+                style={{
+                  width: '100%',
+                  height: 220,
+                  objectFit: 'cover',
+                  borderRadius: 16,
+                  border: '1px solid #e5e7eb',
+                  display: 'block',
+                }}
               />
             ) : (
-              <div className="flex h-48 w-full items-center justify-center rounded-xl border text-sm text-gray-500">
+              <div
+                style={{
+                  width: '100%',
+                  height: 220,
+                  borderRadius: 16,
+                  border: '1px solid #e5e7eb',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#6b7280',
+                  fontSize: 14,
+                }}
+              >
                 No bottle photo yet
               </div>
             )}
@@ -177,33 +233,66 @@ export default async function WhiskyDetailPage({
         </div>
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-xl font-semibold">Reviews</h2>
+      <section>
+        <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 12 }}>Reviews</h2>
 
         {reviews.length === 0 ? (
-          <div className="rounded-2xl border p-4 text-sm text-gray-500">
+          <div
+            style={{
+              border: '1px solid #e5e7eb',
+              borderRadius: 16,
+              padding: 16,
+              color: '#6b7280',
+              fontSize: 14,
+            }}
+          >
             No reviews yet.
           </div>
         ) : (
           reviews.map((review) => (
-            <div key={review.id} className="rounded-2xl border p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
+            <div
+              key={review.id}
+              style={{
+                border: '1px solid #e5e7eb',
+                borderRadius: 16,
+                padding: 16,
+                marginBottom: 12,
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: 16,
+                }}
+              >
                 <div>
-                  <p className="font-medium">
+                  <div style={{ fontWeight: 600 }}>
                     {review.profile?.display_name ?? 'Unknown reviewer'}
-                  </p>
-                  <p className="text-sm text-gray-500">
+                  </div>
+                  <div style={{ color: '#6b7280', fontSize: 14, marginTop: 4 }}>
                     {review.review_date} · {review.session?.location ?? 'Unknown location'}
-                  </p>
+                  </div>
                 </div>
 
-                <div className="rounded-full border px-3 py-1 text-sm font-medium">
+                <div
+                  style={{
+                    border: '1px solid #d1d5db',
+                    borderRadius: 9999,
+                    padding: '6px 12px',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
                   {review.rating}/10
                 </div>
               </div>
 
               {review.notes ? (
-                <p className="mt-3 text-sm leading-6">{review.notes}</p>
+                <p style={{ marginTop: 12, fontSize: 14, lineHeight: 1.6 }}>{review.notes}</p>
               ) : null}
             </div>
           ))
