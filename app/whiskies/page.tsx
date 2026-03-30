@@ -121,15 +121,15 @@ export default function WhiskiesPage() {
     if (!q) return whiskies
 
     return whiskies.filter((whisky) => {
-      const brand = whisky.brand ?? ''
-      const name = whisky.name ?? ''
-      const category = whisky.category ?? ''
-      const providerName = whisky.provided_by?.display_name ?? ''
-      const providerId = whisky.provided_by_profile_id ?? ''
-      const brandAndName = `${brand} ${name}`
-
       const searchable = normalize(
-        [brand, name, brandAndName, category, providerName, providerId].join(' ')
+        [
+          whisky.brand,
+          whisky.name,
+          `${whisky.brand} ${whisky.name}`,
+          whisky.category ?? '',
+          whisky.provided_by?.display_name ?? '',
+          whisky.provided_by_profile_id ?? '',
+        ].join(' ')
       )
 
       return searchable.includes(q)
@@ -137,69 +137,133 @@ export default function WhiskiesPage() {
   }, [whiskies, search])
 
   return (
-    <main className="mx-auto max-w-6xl p-6">
-      <div className="mb-6 space-y-3">
-        <div>
-          <h1 className="text-3xl font-bold">Whiskies</h1>
-          <p className="text-sm text-gray-500">Browse the club bottle list</p>
-        </div>
+    <main style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 32, fontWeight: 700, margin: 0 }}>Whiskies</h1>
+        <p style={{ fontSize: 14, color: '#6b7280', marginTop: 6 }}>
+          Browse the club bottle list
+        </p>
+      </div>
 
+      <div style={{ marginBottom: 20 }}>
         <input
           type="text"
           placeholder="Search bottles, categories, or providers..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full rounded-xl border p-3"
+          style={{
+            width: '100%',
+            padding: '12px 14px',
+            border: '1px solid #d1d5db',
+            borderRadius: 12,
+            fontSize: 14,
+            boxSizing: 'border-box',
+          }}
         />
-
-        <p className="text-sm text-gray-500">
+        <p style={{ fontSize: 14, color: '#6b7280', marginTop: 10 }}>
           Showing {filteredWhiskies.length} of {whiskies.length} bottles
         </p>
       </div>
 
       {loading ? (
-        <div className="rounded-2xl border p-6 text-sm text-gray-500">Loading whiskies...</div>
+        <div
+          style={{
+            border: '1px solid #e5e7eb',
+            borderRadius: 16,
+            padding: 16,
+            color: '#6b7280',
+            fontSize: 14,
+          }}
+        >
+          Loading whiskies...
+        </div>
       ) : error ? (
-        <div className="rounded-2xl border p-6 text-sm text-red-600">{error}</div>
+        <div
+          style={{
+            border: '1px solid #fecaca',
+            borderRadius: 16,
+            padding: 16,
+            color: '#b91c1c',
+            fontSize: 14,
+          }}
+        >
+          {error}
+        </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: 16,
+          }}
+        >
           {filteredWhiskies.map((whisky) => (
             <Link
               key={whisky.id}
               href={`/whiskies/${whisky.id}`}
-              className="rounded-2xl border p-4 shadow-sm transition hover:shadow-md"
+              style={{
+                display: 'block',
+                border: '1px solid #e5e7eb',
+                borderRadius: 16,
+                padding: 16,
+                boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                textDecoration: 'none',
+                color: '#111827',
+                background: '#fff',
+              }}
             >
               {whisky.image_url ? (
                 <img
                   src={whisky.image_url}
                   alt={`${whisky.brand} ${whisky.name}`}
-                  className="mb-3 h-36 w-full rounded-xl border object-cover"
+                  style={{
+                    width: '100%',
+                    height: 160,
+                    objectFit: 'cover',
+                    borderRadius: 12,
+                    border: '1px solid #e5e7eb',
+                    display: 'block',
+                    marginBottom: 12,
+                  }}
                 />
               ) : (
-                <div className="mb-3 flex h-36 w-full items-center justify-center rounded-xl border text-sm text-gray-500">
+                <div
+                  style={{
+                    width: '100%',
+                    height: 160,
+                    borderRadius: 12,
+                    border: '1px solid #e5e7eb',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#6b7280',
+                    fontSize: 14,
+                    marginBottom: 12,
+                  }}
+                >
                   No photo
                 </div>
               )}
 
-              <div className="space-y-1">
-                <h2 className="font-semibold">
+              <div style={{ display: 'grid', gap: 6 }}>
+                <h2 style={{ fontWeight: 600, fontSize: 18, margin: 0 }}>
                   {whisky.brand} {whisky.name}
                 </h2>
 
-                <p className="text-sm text-gray-500">
+                <p style={{ fontSize: 14, color: '#6b7280', margin: 0 }}>
                   {whisky.category ?? 'Unknown category'}
                 </p>
 
-                <p className="text-sm text-gray-500">
+                <p style={{ fontSize: 14, color: '#6b7280', margin: 0 }}>
                   Price: {whisky.cost != null ? `$${whisky.cost.toFixed(2)}` : '—'}
                 </p>
 
-                <p className="text-sm text-gray-500">
+                <p style={{ fontSize: 14, color: '#6b7280', margin: 0 }}>
                   Provided by:{' '}
                   {whisky.provided_by?.display_name ?? whisky.provided_by_profile_id ?? '—'}
                 </p>
 
-                <p className="text-sm">
+                <p style={{ fontSize: 14, margin: 0 }}>
                   Average: {whisky.avg_rating != null ? whisky.avg_rating.toFixed(2) : '—'} · Reviews:{' '}
                   {whisky.review_count}
                 </p>
