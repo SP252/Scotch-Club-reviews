@@ -33,6 +33,10 @@ function firstOrSelf<T>(value: MaybeArray<T>): T | null {
   return Array.isArray(value) ? value[0] ?? null : value
 }
 
+function normalize(text: string) {
+  return text.toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
 export default function HomePage() {
   const [reviews, setReviews] = useState<Review[]>([])
   const [search, setSearch] = useState('')
@@ -57,7 +61,7 @@ export default function HomePage() {
           session:tasting_sessions(tasting_date, location)
         `)
         .order('review_date', { ascending: false })
-        .limit(100)
+        .limit(200)
 
       if (error) {
         setError(error.message)
@@ -84,24 +88,24 @@ export default function HomePage() {
   }, [])
 
   const filteredReviews = useMemo(() => {
-    const q = search.trim().toLowerCase()
-
+    const q = normalize(search)
     if (!q) return reviews
 
     return reviews.filter((review) => {
-      const haystack = [
-        review.profile?.display_name ?? '',
-        review.whisky?.brand ?? '',
-        review.whisky?.name ?? '',
-        review.whisky?.category ?? '',
-        review.session?.location ?? '',
-        review.notes ?? '',
-        review.review_date,
-      ]
-        .join(' ')
-        .toLowerCase()
+      const reviewer = review.profile?.display_name ?? ''
+      const brand = review.whisky?.brand ?? ''
+      const name = review.whisky?.name ?? ''
+      const bottle = `${brand} ${name}`
+      const category = review.whisky?.category ?? ''
+      const location = review.session?.location ?? ''
+      const notes = review.notes ?? ''
+      const date = review.review_date ?? ''
 
-      return haystack.includes(q)
+      const searchable = normalize(
+        [reviewer, brand, name, bottle, category, location, notes, date].join(' ')
+      )
+
+      return searchable.includes(q)
     })
   }, [reviews, search])
 
@@ -127,9 +131,13 @@ export default function HomePage() {
       </div>
 
       {loading ? (
-        <div className="rounded-2xl border p-6 text-sm text-gray-500">Loading reviews...</div>
+        <div className="rounded-2xl border p-6 text-sm text-gray-500">
+          Loading reviews...
+        </div>
       ) : error ? (
-        <div className="rounded-2xl border p-6 text-sm text-red-600">{error}</div>
+        <div className="rounded-2xl border p-6 text-sm text-red-600">
+          {error}
+        </div>
       ) : (
         <div className="space-y-3">
           {filteredReviews.map((review) => (
