@@ -86,12 +86,19 @@ export default function RootLayout({
                 <Link href="/" style={navLinkStyle}>
                   Recent Reviews
                 </Link>
+
                 <Link href="/whiskies" style={navLinkStyle}>
                   Whiskies
                 </Link>
+
                 <Link href="/leaderboard" style={navLinkStyle}>
                   Leaderboard
                 </Link>
+
+                <Link href="/member-rankings" style={navLinkStyle}>
+                  Member Rankings
+                </Link>
+
                 <Link href="/reviews/new" style={navLinkStyle}>
                   Add Review
                 </Link>
