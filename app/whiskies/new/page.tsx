@@ -33,7 +33,7 @@ async function convertHeicToJpeg(file: File): Promise<File> {
   const blob = Array.isArray(result) ? result[0] : result
 
   if (!(blob instanceof Blob)) {
-    throw new Error('HEIC conversion did not return a valid image blob.')
+    throw new Error('HEIC conversion failed')
   }
 
   return new File(
@@ -61,15 +61,10 @@ export default function NewBottlePage() {
 
   useEffect(() => {
     async function loadProfiles() {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('profiles')
         .select('id, display_name')
-        .order('display_name', { ascending: true })
-
-      if (error) {
-        setMessage(error.message)
-        return
-      }
+        .order('display_name')
 
       setProfiles(data ?? [])
     }
@@ -92,60 +87,42 @@ export default function NewBottlePage() {
       uploadFile = await convertHeicToJpeg(file)
     }
 
-    const fileExt = uploadFile.name.split('.').pop()?.toLowerCase() || 'jpg'
-    const safeExt = fileExt.replace(/[^a-z0-9]/g, '') || 'jpg'
-    const filePath = `${bottleId}.${safeExt}`
+    const ext = uploadFile.name.split('.').pop() || 'jpg'
+    const path = `${bottleId}.${ext}`
 
-    const { error: uploadError } = await supabase.storage
+    await supabase.storage
       .from('bottle-photos')
-      .upload(filePath, uploadFile, {
-        upsert: true,
-        contentType: uploadFile.type || 'image/jpeg',
-      })
-
-    if (uploadError) {
-      throw new Error(uploadError.message)
-    }
+      .upload(path, uploadFile, { upsert: true })
 
     const { data } = supabase.storage
       .from('bottle-photos')
-      .getPublicUrl(filePath)
+      .getPublicUrl(path)
 
     return data.publicUrl
   }
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    setLoading(true)
     setMessage('')
 
-    if (!form.brand.trim() || !form.name.trim()) {
-      setMessage('Brand and bottle name are required.')
-      return
-    }
-
-    setLoading(true)
-
     try {
-      const bottleId = makeBottleId()
-      const imageUrl = file ? await uploadBottlePhoto(bottleId) : null
+      const id = makeBottleId()
+      const image_url = file ? await uploadBottlePhoto(id) : null
 
-      const { error } = await supabase.from('whiskies').insert({
-        id: bottleId,
-        brand: form.brand.trim(),
-        name: form.name.trim(),
-        category: form.category.trim() || null,
+      await supabase.from('whiskies').insert({
+        id,
+        brand: form.brand,
+        name: form.name,
+        category: form.category || null,
         age_years: form.age_years ? Number(form.age_years) : null,
         cost: form.cost ? Number(form.cost) : null,
         provided_by_profile_id: form.provided_by_profile_id || null,
-        date_added: form.date_added || null,
-        image_url: imageUrl,
+        date_added: form.date_added,
+        image_url,
       })
 
-      if (error) {
-        throw new Error(error.message)
-      }
-
-      setMessage('Bottle added successfully.')
+      setMessage('Bottle added')
       setForm({
         brand: '',
         name: '',
@@ -156,11 +133,8 @@ export default function NewBottlePage() {
         date_added: new Date().toISOString().slice(0, 10),
       })
       setFile(null)
-
-      const input = document.getElementById('new-bottle-photo') as HTMLInputElement | null
-      if (input) input.value = ''
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Failed to add bottle.')
+      setMessage('Error adding bottle')
     }
 
     setLoading(false)
@@ -169,123 +143,78 @@ export default function NewBottlePage() {
   return (
     <main
       style={{
-        maxWidth: 760,
+        maxWidth: 720,
         margin: '0 auto',
-        padding: '8px 24px 24px',
+        padding: '20px',
       }}
     >
       <section
         style={{
-          border: '1px solid rgba(180, 140, 80, 0.22)',
-          borderRadius: 24,
+          borderRadius: 20,
           padding: 28,
-          background: 'linear-gradient(180deg, #f2e7d5 0%, #eadbc4 100%)',
-          boxShadow: '0 20px 40px rgba(0,0,0,0.30)',
+          background: '#111827',
+          border: '1px solid #1f2937',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
         }}
       >
-        <div style={{ marginBottom: 22 }}>
-          <div
-            style={{
-              fontSize: 14,
-              letterSpacing: '0.12em',
-              textTransform: 'uppercase',
-              color: '#9a6826',
-              marginBottom: 8,
-              fontWeight: 700,
-            }}
-          >
-            Bottle Entry
-          </div>
+        <h1
+          style={{
+            fontSize: 34,
+            fontWeight: 800,
+            color: '#f9fafb',
+            marginBottom: 6,
+          }}
+        >
+          Add New Bottle
+        </h1>
 
-          <h1
-            style={{
-              fontSize: 40,
-              lineHeight: 1.05,
-              fontWeight: 800,
-              margin: 0,
-              color: '#1e1b18',
-            }}
-          >
-            Add New Bottle
-          </h1>
-
-          <p
-            style={{
-              fontSize: 15,
-              color: '#4b4035',
-              marginTop: 10,
-              marginBottom: 0,
-            }}
-          >
-            Add a new bottle to the club and optionally upload a photo right away.
-          </p>
-        </div>
+        <p style={{ color: '#9ca3af', marginBottom: 24 }}>
+          Add a bottle and optionally upload a photo.
+        </p>
 
         <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 16 }}>
           <Field label="Brand">
             <input
-              type="text"
               value={form.brand}
               onChange={(e) => setForm({ ...form, brand: e.target.value })}
               style={inputStyle}
-              placeholder="Balvenie"
             />
           </Field>
 
           <Field label="Bottle Name">
             <input
-              type="text"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               style={inputStyle}
-              placeholder="Caribbean Cask"
             />
           </Field>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: 16,
-            }}
-          >
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Field label="Category">
               <input
-                type="text"
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
                 style={inputStyle}
-                placeholder="Scotch"
               />
             </Field>
 
             <Field label="Age">
               <input
                 type="number"
-                step="0.1"
                 value={form.age_years}
                 onChange={(e) => setForm({ ...form, age_years: e.target.value })}
                 style={inputStyle}
-                placeholder="14"
               />
             </Field>
           </div>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: 16,
-            }}
-          >
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Field label="Cost">
               <input
                 type="number"
-                step="0.01"
                 value={form.cost}
                 onChange={(e) => setForm({ ...form, cost: e.target.value })}
                 style={inputStyle}
-                placeholder="89.99"
               />
             </Field>
 
@@ -302,13 +231,15 @@ export default function NewBottlePage() {
           <Field label="Provided By">
             <select
               value={form.provided_by_profile_id}
-              onChange={(e) => setForm({ ...form, provided_by_profile_id: e.target.value })}
+              onChange={(e) =>
+                setForm({ ...form, provided_by_profile_id: e.target.value })
+              }
               style={inputStyle}
             >
               <option value="">Select provider</option>
-              {profiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.display_name}
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.display_name}
                 </option>
               ))}
             </select>
@@ -316,7 +247,6 @@ export default function NewBottlePage() {
 
           <Field label="Bottle Photo">
             <input
-              id="new-bottle-photo"
               type="file"
               accept="image/*,.heic,.heif"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
@@ -324,50 +254,21 @@ export default function NewBottlePage() {
             />
           </Field>
 
-          <div
-            style={{
-              display: 'flex',
-              gap: 12,
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              marginTop: 6,
-            }}
-          >
-            <button
-              type="submit"
-              disabled={loading}
-              style={buttonStyle}
-            >
-              {loading ? 'Saving Bottle...' : 'Add Bottle'}
-            </button>
+          <button type="submit" style={buttonStyle}>
+            {loading ? 'Saving...' : 'Add Bottle'}
+          </button>
 
-            {message ? (
-              <div style={{ color: '#3d342b', fontSize: 14 }}>{message}</div>
-            ) : null}
-          </div>
+          {message && <div style={{ color: '#93c5fd' }}>{message}</div>}
         </form>
       </section>
     </main>
   )
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string
-  children: React.ReactNode
-}) {
+function Field({ label, children }: any) {
   return (
-    <label style={{ display: 'grid', gap: 8 }}>
-      <span
-        style={{
-          fontSize: 13,
-          fontWeight: 700,
-          color: '#32281f',
-          letterSpacing: '0.02em',
-        }}
-      >
+    <label style={{ display: 'grid', gap: 6 }}>
+      <span style={{ fontSize: 13, color: '#d1d5db', fontWeight: 600 }}>
         {label}
       </span>
       {children}
@@ -376,25 +277,20 @@ function Field({
 }
 
 const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '13px 14px',
-  border: '1px solid #d3c0a7',
-  borderRadius: 14,
-  fontSize: 15,
-  background: '#fffaf2',
-  color: '#1f1a16',
-  outline: 'none',
+  padding: '12px',
+  borderRadius: 10,
+  border: '1px solid #374151',
+  background: '#0f172a',
+  color: '#f9fafb',
 }
 
 const buttonStyle: React.CSSProperties = {
-  display: 'inline-block',
-  padding: '13px 18px',
-  border: '1px solid #9a6826',
-  borderRadius: 14,
-  background: 'linear-gradient(180deg, #d6a85f, #b88434)',
-  color: '#1a1410',
-  fontSize: 15,
-  fontWeight: 800,
+  marginTop: 8,
+  padding: '12px',
+  borderRadius: 12,
+  border: 'none',
+  background: '#2563eb',
+  color: 'white',
+  fontWeight: 700,
   cursor: 'pointer',
-  boxShadow: '0 8px 18px rgba(0,0,0,0.16)',
 }
