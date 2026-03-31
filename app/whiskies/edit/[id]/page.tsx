@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 
 type Profile = {
@@ -9,100 +8,174 @@ type Profile = {
   display_name: string
 }
 
-type WhiskyRow = {
-  id: string
-  brand: string | null
-  name: string | null
-  category: string | null
-  age_years: number | null
-  cost: number | null
-  provided_by_profile_id: string | null
-  date_added: string | null
+const DEFAULT_CATEGORIES = [
+  'Scotch',
+  'Bourbon',
+  'American',
+  'Irish',
+  'Japanese',
+  'Canadian',
+  'Rye',
+  'Other',
+]
+
+function isHeicLike(file: File) {
+  const name = file.name.toLowerCase()
+  const type = (file.type || '').toLowerCase()
+
+  return (
+    type.includes('heic') ||
+    type.includes('heif') ||
+    name.endsWith('.heic') ||
+    name.endsWith('.heif')
+  )
 }
 
-export default function EditWhiskyPage() {
-  const router = useRouter()
-  const params = useParams()
-  const id = String(params.id ?? '')
+async function convertHeicToJpeg(file: File): Promise<File> {
+  const mod = await import('heic2any')
+  const heic2any = mod.default
 
+  const result = await heic2any({
+    blob: file,
+    toType: 'image/jpeg',
+    quality: 0.9,
+  })
+
+  const blob = Array.isArray(result) ? result[0] : result
+
+  if (!(blob instanceof Blob)) {
+    throw new Error('HEIC conversion failed.')
+  }
+
+  return new File(
+    [blob],
+    file.name.replace(/\.(heic|heif)$/i, '.jpg'),
+    { type: 'image/jpeg' }
+  )
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+export default function NewBottlePage() {
   const [profiles, setProfiles] = useState<Profile[]>([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
+  const [file, setFile] = useState<File | null>(null)
 
   const [form, setForm] = useState({
     brand: '',
     name: '',
-    category: '',
+    category_choice: '',
+    new_category: '',
     age_years: '',
     cost: '',
-    provided_by_profile_id: '',
-    date_added: '',
+    provider_choice: '',
+    new_provider_name: '',
+    date_added: new Date().toISOString().slice(0, 10),
   })
 
   useEffect(() => {
-    async function loadPage() {
-      if (!id) {
-        setMessage('Missing bottle ID.')
-        setLoading(false)
+    async function loadProfiles() {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, display_name')
+        .order('display_name', { ascending: true })
+
+      if (error) {
+        setMessage(`Failed to load providers: ${error.message}`)
         return
       }
 
-      setLoading(true)
-      setMessage('')
-
-      const [{ data: whiskyData, error: whiskyError }, { data: profilesData, error: profilesError }] =
-        await Promise.all([
-          supabase
-            .from('whiskies')
-            .select(
-              'id, brand, name, category, age_years, cost, provided_by_profile_id, date_added'
-            )
-            .eq('id', id)
-            .maybeSingle(),
-          supabase
-            .from('profiles')
-            .select('id, display_name')
-            .order('display_name', { ascending: true }),
-        ])
-
-      if (profilesError) {
-        setMessage(profilesError.message)
-        setLoading(false)
-        return
-      }
-
-      setProfiles(profilesData ?? [])
-
-      if (whiskyError) {
-        setMessage(whiskyError.message)
-        setLoading(false)
-        return
-      }
-
-      if (!whiskyData) {
-        setMessage(`Could not find bottle with ID: ${id}`)
-        setLoading(false)
-        return
-      }
-
-      const whisky = whiskyData as WhiskyRow
-
-      setForm({
-        brand: whisky.brand ?? '',
-        name: whisky.name ?? '',
-        category: whisky.category ?? '',
-        age_years: whisky.age_years != null ? String(whisky.age_years) : '',
-        cost: whisky.cost != null ? String(whisky.cost) : '',
-        provided_by_profile_id: whisky.provided_by_profile_id ?? '',
-        date_added: whisky.date_added ?? '',
-      })
-
-      setLoading(false)
+      setProfiles(data ?? [])
     }
 
-    loadPage()
-  }, [id])
+    loadProfiles()
+  }, [])
+
+  const categoryOptions = useMemo(() => {
+    const set = new Set(DEFAULT_CATEGORIES)
+
+    if (
+      form.category_choice &&
+      form.category_choice !== '__new__' &&
+      form.category_choice.trim()
+    ) {
+      set.add(form.category_choice.trim())
+    }
+
+    return Array.from(set)
+  }, [form.category_choice])
+
+  function makeBottleId() {
+    const cleanBrand = form.brand.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+    const cleanName = form.name.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+    return `${cleanBrand}-${cleanName}`.slice(0, 40)
+  }
+
+  async function createProviderIfNeeded() {
+    if (form.provider_choice !== '__new__') {
+      return form.provider_choice || null
+    }
+
+    const displayName = form.new_provider_name.trim()
+    if (!displayName) {
+      throw new Error('Please enter the new provider name.')
+    }
+
+    const generatedId = `P-${slugify(displayName)}-${Date.now().toString(36)}`
+
+    const { error } = await supabase.from('profiles').insert({
+      id: generatedId,
+      display_name: displayName,
+    })
+
+    if (error) {
+      throw new Error(`Could not create new provider: ${error.message}`)
+    }
+
+    setProfiles((current) =>
+      [...current, { id: generatedId, display_name: displayName }].sort((a, b) =>
+        a.display_name.localeCompare(b.display_name)
+      )
+    )
+
+    return generatedId
+  }
+
+  async function uploadBottlePhoto(bottleId: string) {
+    if (!file) return null
+
+    let uploadFile = file
+
+    if (isHeicLike(file)) {
+      uploadFile = await convertHeicToJpeg(file)
+    }
+
+    const ext = uploadFile.name.split('.').pop() || 'jpg'
+    const safeExt = ext.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+    const path = `${bottleId}.${safeExt}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('bottle-photos')
+      .upload(path, uploadFile, {
+        upsert: true,
+        contentType: uploadFile.type || 'image/jpeg',
+      })
+
+    if (uploadError) {
+      throw new Error(`Photo upload failed: ${uploadError.message}`)
+    }
+
+    const { data } = supabase.storage.from('bottle-photos').getPublicUrl(path)
+
+    return data.publicUrl
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -113,54 +186,124 @@ export default function EditWhiskyPage() {
       return
     }
 
-    setSaving(true)
+    const finalCategory =
+      form.category_choice === '__new__'
+        ? form.new_category.trim()
+        : form.category_choice.trim()
 
-    const { error } = await supabase
-      .from('whiskies')
-      .update({
-        brand: form.brand.trim(),
-        name: form.name.trim(),
-        category: form.category.trim() || null,
-        age_years: form.age_years ? Number(form.age_years) : null,
-        cost: form.cost ? Number(form.cost) : null,
-        provided_by_profile_id: form.provided_by_profile_id || null,
-        date_added: form.date_added || null,
-      })
-      .eq('id', id)
-
-    if (error) {
-      setMessage(error.message)
-      setSaving(false)
+    if (!finalCategory) {
+      setMessage('Please choose a category or add a new one.')
       return
     }
 
-    router.push(`/whiskies/${encodeURIComponent(id)}`)
-  }
+    setLoading(true)
 
-  if (loading) {
-    return (
-      <main style={{ maxWidth: 760, margin: '0 auto', padding: '8px 24px 24px' }}>
-        <section style={panelStyle}>
-          <h1 style={titleStyle}>Edit Bottle</h1>
-          <p style={subtleTextStyle}>Loading bottle details...</p>
-        </section>
-      </main>
-    )
+    try {
+      const id = makeBottleId()
+      const providerId = await createProviderIfNeeded()
+      const imageUrl = file ? await uploadBottlePhoto(id) : null
+
+      const { error } = await supabase.from('whiskies').insert({
+        id,
+        brand: form.brand.trim(),
+        name: form.name.trim(),
+        category: finalCategory,
+        age_years: form.age_years ? Number(form.age_years) : null,
+        cost: form.cost ? Number(form.cost) : null,
+        provided_by_profile_id: providerId,
+        date_added: form.date_added || null,
+        image_url: imageUrl,
+      })
+
+      if (error) {
+        throw new Error(`Could not add bottle: ${error.message}`)
+      }
+
+      setMessage(`Bottle added successfully. ID: ${id}`)
+      setForm({
+        brand: '',
+        name: '',
+        category_choice: '',
+        new_category: '',
+        age_years: '',
+        cost: '',
+        provider_choice: '',
+        new_provider_name: '',
+        date_added: new Date().toISOString().slice(0, 10),
+      })
+      setFile(null)
+
+      const input = document.getElementById('new-bottle-photo') as HTMLInputElement | null
+      if (input) input.value = ''
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Unknown error adding bottle.')
+    }
+
+    setLoading(false)
   }
 
   return (
-    <main style={{ maxWidth: 760, margin: '0 auto', padding: '8px 24px 24px' }}>
-      <section style={panelStyle}>
-        <h1 style={titleStyle}>Edit Bottle</h1>
-        <p style={subtleTextStyle}>Update the bottle details below.</p>
+    <main
+      style={{
+        maxWidth: 760,
+        margin: '0 auto',
+        padding: '8px 24px 24px',
+      }}
+    >
+      <section
+        style={{
+          borderRadius: 24,
+          padding: 30,
+          background: 'linear-gradient(180deg, #eaf1fb 0%, #dbe7f6 100%)',
+          border: '1px solid rgba(255,255,255,0.55)',
+          boxShadow: '0 18px 40px rgba(0,0,0,0.30)',
+        }}
+      >
+        <div style={{ marginBottom: 24 }}>
+          <div
+            style={{
+              fontSize: 13,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: '#315b9d',
+              fontWeight: 800,
+              marginBottom: 8,
+            }}
+          >
+            Bottle Entry
+          </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 16, marginTop: 20 }}>
+          <h1
+            style={{
+              fontSize: 42,
+              lineHeight: 1.05,
+              fontWeight: 800,
+              margin: 0,
+              color: '#0f172a',
+            }}
+          >
+            Add New Bottle
+          </h1>
+
+          <p
+            style={{
+              fontSize: 15,
+              color: '#334155',
+              marginTop: 10,
+              marginBottom: 0,
+            }}
+          >
+            Add a new bottle to the club and optionally upload a photo right away.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 16 }}>
           <Field label="Brand">
             <input
               value={form.brand}
               onChange={(e) => setForm({ ...form, brand: e.target.value })}
               style={inputStyle}
-              placeholder="Brand"
+              placeholder="Mortlach"
             />
           </Field>
 
@@ -169,7 +312,7 @@ export default function EditWhiskyPage() {
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               style={inputStyle}
-              placeholder="Bottle Name"
+              placeholder="Distiller's Dram"
             />
           </Field>
 
@@ -181,12 +324,19 @@ export default function EditWhiskyPage() {
             }}
           >
             <Field label="Category">
-              <input
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
+              <select
+                value={form.category_choice}
+                onChange={(e) => setForm({ ...form, category_choice: e.target.value })}
                 style={inputStyle}
-                placeholder="Scotch, Bourbon, etc."
-              />
+              >
+                <option value="">Select category</option>
+                {categoryOptions.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+                <option value="__new__">Add new category...</option>
+              </select>
             </Field>
 
             <Field label="Age">
@@ -196,10 +346,21 @@ export default function EditWhiskyPage() {
                 value={form.age_years}
                 onChange={(e) => setForm({ ...form, age_years: e.target.value })}
                 style={inputStyle}
-                placeholder="Age"
+                placeholder="16"
               />
             </Field>
           </div>
+
+          {form.category_choice === '__new__' ? (
+            <Field label="New Category">
+              <input
+                value={form.new_category}
+                onChange={(e) => setForm({ ...form, new_category: e.target.value })}
+                style={inputStyle}
+                placeholder="Enter new category"
+              />
+            </Field>
+          ) : null}
 
           <div
             style={{
@@ -208,14 +369,14 @@ export default function EditWhiskyPage() {
               gap: 16,
             }}
           >
-            <Field label="Price">
+            <Field label="Cost">
               <input
                 type="number"
                 step="0.01"
                 value={form.cost}
                 onChange={(e) => setForm({ ...form, cost: e.target.value })}
                 style={inputStyle}
-                placeholder="Price"
+                placeholder="200"
               />
             </Field>
 
@@ -231,36 +392,60 @@ export default function EditWhiskyPage() {
 
           <Field label="Provided By">
             <select
-              value={form.provided_by_profile_id}
-              onChange={(e) => setForm({ ...form, provided_by_profile_id: e.target.value })}
+              value={form.provider_choice}
+              onChange={(e) => setForm({ ...form, provider_choice: e.target.value })}
               style={inputStyle}
             >
               <option value="">Select provider</option>
-              {profiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.display_name}
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.display_name}
                 </option>
               ))}
+              <option value="__new__">Add new person...</option>
             </select>
           </Field>
 
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-            <button type="submit" disabled={saving} style={buttonStyle}>
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => router.push(`/whiskies/${encodeURIComponent(id)}`)}
-              style={secondaryButtonStyle}
-            >
-              Cancel
-            </button>
-          </div>
-
-          {message ? (
-            <div style={{ color: '#1e3a5f', fontSize: 14, fontWeight: 600 }}>{message}</div>
+          {form.provider_choice === '__new__' ? (
+            <Field label="New Person Name">
+              <input
+                value={form.new_provider_name}
+                onChange={(e) => setForm({ ...form, new_provider_name: e.target.value })}
+                style={inputStyle}
+                placeholder="Enter new person name"
+              />
+            </Field>
           ) : null}
+
+          <Field label="Bottle Photo">
+            <input
+              id="new-bottle-photo"
+              type="file"
+              accept="image/*,.heic,.heif"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              style={inputStyle}
+            />
+          </Field>
+
+          <div
+            style={{
+              display: 'flex',
+              gap: 12,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              marginTop: 6,
+            }}
+          >
+            <button type="submit" disabled={loading} style={buttonStyle}>
+              {loading ? 'Saving Bottle...' : 'Add Bottle'}
+            </button>
+
+            {message ? (
+              <div style={{ color: '#1e3a5f', fontSize: 14, fontWeight: 600 }}>
+                {message}
+              </div>
+            ) : null}
+          </div>
         </form>
       </section>
     </main>
@@ -290,29 +475,6 @@ function Field({
   )
 }
 
-const panelStyle: React.CSSProperties = {
-  borderRadius: 24,
-  padding: 30,
-  background: 'linear-gradient(180deg, #eaf1fb 0%, #dbe7f6 100%)',
-  border: '1px solid rgba(255,255,255,0.55)',
-  boxShadow: '0 18px 40px rgba(0,0,0,0.30)',
-}
-
-const titleStyle: React.CSSProperties = {
-  fontSize: 42,
-  lineHeight: 1.05,
-  fontWeight: 800,
-  margin: 0,
-  color: '#0f172a',
-}
-
-const subtleTextStyle: React.CSSProperties = {
-  fontSize: 15,
-  color: '#334155',
-  marginTop: 10,
-  marginBottom: 0,
-}
-
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '13px 14px',
@@ -335,16 +497,5 @@ const buttonStyle: React.CSSProperties = {
   fontSize: 15,
   fontWeight: 800,
   cursor: 'pointer',
-}
-
-const secondaryButtonStyle: React.CSSProperties = {
-  display: 'inline-block',
-  padding: '13px 18px',
-  border: '1px solid #94a3b8',
-  borderRadius: 14,
-  background: '#ffffff',
-  color: '#0f172a',
-  fontSize: 15,
-  fontWeight: 700,
-  cursor: 'pointer',
+  boxShadow: '0 8px 18px rgba(37, 99, 235, 0.22)',
 }
