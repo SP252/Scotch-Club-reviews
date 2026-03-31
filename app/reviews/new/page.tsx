@@ -115,6 +115,36 @@ export default function NewReviewPage() {
     })
   }
 
+  async function getOrCreateSession(reviewDate: string, location: string) {
+    const { data: existingSession, error: findError } = await supabase
+      .from('tasting_sessions')
+      .select('id, tasting_date, location')
+      .eq('tasting_date', reviewDate)
+      .eq('location', location)
+      .limit(1)
+      .maybeSingle()
+
+    if (findError) {
+      throw new Error(`Could not look up tasting session: ${findError.message}`)
+    }
+
+    if (existingSession?.id != null) {
+      return existingSession.id
+    }
+
+    const { data: newSession, error: insertError } = await supabase
+      .from('tasting_sessions')
+      .insert([{ tasting_date: reviewDate, location }])
+      .select('id')
+      .single()
+
+    if (insertError) {
+      throw new Error(`Could not create tasting session: ${insertError.message}`)
+    }
+
+    return newSession.id
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setMessage('')
@@ -174,49 +204,48 @@ export default function NewReviewPage() {
 
     setLoading(true)
 
-    const { data: sessionRow, error: sessionError } = await supabase
-      .from('tasting_sessions')
-      .upsert(
-        [{ tasting_date: form.review_date, location: finalLocation }],
-        { onConflict: 'tasting_date,location' }
-      )
-      .select()
-      .single()
+    try {
+      const sessionId = await getOrCreateSession(form.review_date, finalLocation)
 
-    if (sessionError) {
-      setMessage(sessionError.message)
-      setLoading(false)
-      return
+      const reviewRows = filledEntries.map((entry) => ({
+        id: crypto.randomUUID(),
+        review_date: form.review_date,
+        session_id: sessionId,
+        profile_id: entry.reviewer_id,
+        whisky_id: form.whisky_id,
+        rating: Number(entry.rating),
+        notes: entry.notes.trim() || null,
+      }))
+
+      const { error: reviewError } = await supabase
+        .from('reviews')
+        .insert(reviewRows)
+
+      if (reviewError) {
+        throw new Error(`Could not save reviews: ${reviewError.message}`)
+      }
+
+      setMessage(`Saved ${reviewRows.length} review${reviewRows.length === 1 ? '' : 's'}.`)
+      setForm({
+        review_date: new Date().toISOString().slice(0, 10),
+        location_choice: '',
+        new_location: '',
+        whisky_id: '',
+      })
+      setEntries([makeEmptyEntry(), makeEmptyEntry()])
+
+      const { data: refreshedSessions } = await supabase
+        .from('tasting_sessions')
+        .select('id, tasting_date, location')
+        .order('location', { ascending: true })
+
+      if (refreshedSessions) {
+        setSessions(refreshedSessions)
+      }
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Unknown error saving reviews.')
     }
 
-    const reviewRows = filledEntries.map((entry) => ({
-      id: crypto.randomUUID(),
-      review_date: form.review_date,
-      session_id: sessionRow?.id ?? null,
-      profile_id: entry.reviewer_id,
-      whisky_id: form.whisky_id,
-      rating: Number(entry.rating),
-      notes: entry.notes.trim() || null,
-    }))
-
-    const { error: reviewError } = await supabase
-      .from('reviews')
-      .insert(reviewRows)
-
-    if (reviewError) {
-      setMessage(reviewError.message)
-      setLoading(false)
-      return
-    }
-
-    setMessage(`Saved ${reviewRows.length} review${reviewRows.length === 1 ? '' : 's'}.`)
-    setForm({
-      review_date: new Date().toISOString().slice(0, 10),
-      location_choice: '',
-      new_location: '',
-      whisky_id: '',
-    })
-    setEntries([makeEmptyEntry(), makeEmptyEntry()])
     setLoading(false)
   }
 
