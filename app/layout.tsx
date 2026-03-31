@@ -15,11 +15,11 @@ export default function RootLayout({
   const navLinkStyle: React.CSSProperties = {
     display: 'inline-block',
     padding: '10px 16px',
-    border: '1px solid rgba(255,255,255,0.22)',
+    border: '1px solid rgba(255,255,255,0.18)',
     borderRadius: 9999,
     textDecoration: 'none',
     color: '#f8fafc',
-    background: 'rgba(255,255,255,0.07)',
+    background: 'rgba(255,255,255,0.06)',
     fontSize: 14,
     fontWeight: 700,
     boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
@@ -39,11 +39,11 @@ export default function RootLayout({
             style={{
               marginBottom: 24,
               padding: '18px 20px',
-              border: '1px solid rgba(255,255,255,0.16)',
+              border: '1px solid rgba(255,255,255,0.14)',
               borderRadius: 20,
               background:
-                'linear-gradient(135deg, rgba(14, 25, 42, 0.98), rgba(43, 27, 15, 0.96))',
-              boxShadow: '0 12px 32px rgba(0,0,0,0.32)',
+                'linear-gradient(135deg, rgba(14,25,42,0.98), rgba(43,27,15,0.90))',
+              boxShadow: '0 12px 32px rgba(0,0,0,0.30)',
             }}
           >
             <div
