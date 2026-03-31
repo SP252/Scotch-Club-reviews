@@ -223,11 +223,14 @@ export default function WhiskiesPage() {
                 {items.map((whisky) => (
                   <Link
                     key={whisky.id}
-                    href={`/whiskies/${whisky.id}`}
+                    href={`/whiskies/${encodeURIComponent(whisky.id)}`}
+                    prefetch={false}
                     style={{
                       ...cardStyle,
+                      display: 'block',
                       textDecoration: 'none',
                       color: '#0f172a',
+                      cursor: 'pointer',
                     }}
                   >
                     {whisky.image_url ? (
