@@ -15,14 +15,14 @@ export default function RootLayout({
   const navLinkStyle: React.CSSProperties = {
     display: 'inline-block',
     padding: '10px 16px',
-    border: '1px solid rgba(148, 163, 184, 0.25)',
+    border: '1px solid rgba(255,255,255,0.22)',
     borderRadius: 9999,
     textDecoration: 'none',
-    color: '#e5e7eb',
-    background: 'rgba(255,255,255,0.04)',
-    backdropFilter: 'blur(4px)',
+    color: '#f8fafc',
+    background: 'rgba(255,255,255,0.07)',
     fontSize: 14,
-    fontWeight: 600,
+    fontWeight: 700,
+    boxShadow: '0 2px 8px rgba(0,0,0,0.18)',
   }
 
   return (
@@ -39,11 +39,11 @@ export default function RootLayout({
             style={{
               marginBottom: 24,
               padding: '18px 20px',
-              border: '1px solid rgba(148, 163, 184, 0.15)',
+              border: '1px solid rgba(255,255,255,0.16)',
               borderRadius: 20,
               background:
-                'linear-gradient(135deg, rgba(28, 37, 54, 0.92), rgba(39, 30, 23, 0.92))',
-              boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+                'linear-gradient(135deg, rgba(14, 25, 42, 0.98), rgba(43, 27, 15, 0.96))',
+              boxShadow: '0 12px 32px rgba(0,0,0,0.32)',
             }}
           >
             <div
@@ -58,9 +58,9 @@ export default function RootLayout({
               <div>
                 <div
                   style={{
-                    fontSize: 26,
+                    fontSize: 28,
                     fontWeight: 800,
-                    color: '#f8fafc',
+                    color: '#ffffff',
                     marginBottom: 4,
                   }}
                 >
@@ -69,7 +69,7 @@ export default function RootLayout({
                 <div
                   style={{
                     fontSize: 14,
-                    color: '#cbd5e1',
+                    color: '#dbe4f0',
                   }}
                 >
                   Private whiskey reviews for the club
