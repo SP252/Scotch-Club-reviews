@@ -1,18 +1,40 @@
-  312 | }
-  313 |
-> 314 | const cardStyle: React.CSSProperties = {
-      |                  ^
-  315 |   borderRadius: 20,
-  316 |   padding: 18,
-  317 |   background: 'linear-gradient(180deg, #eef4fc 0%, #dfe9f7 100%)',
-Invalid token in pseudo element: WhiteSpace(" ")
-Generated code of PostCSS transform of file content of app/globals.css:
-./app/globals.css:314:18
-  312 | }
-  313 |
-> 314 | const cardStyle: React.CSSProperties = {
-      |                  ^
-  315 |   borderRadius: 20,
-  316 |   padding: 18,
-  317 |   background: 'linear-gradient(180deg, #eef4fc 0%, #dfe9f7 100%)',
-Import trace:
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  font-family: Arial, Helvetica, sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(35, 71, 126, 0.22), transparent 28%),
+    radial-gradient(circle at top right, rgba(86, 41, 10, 0.18), transparent 26%),
+    linear-gradient(180deg, #09111c 0%, #101a2b 45%, #181d27 100%);
+  color: #f8fafc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: inherit;
+}
+
+img {
+  max-width: 100%;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+::placeholder {
+  color: #94a3b8;
+}
+
+input,
+select,
+textarea {
+  color-scheme: light;
+}
