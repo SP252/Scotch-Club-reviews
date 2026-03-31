@@ -3,289 +3,319 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 
-type Whisky = {
-  id: string
-  brand: string
-  name: string
-}
-
 type Profile = {
   id: string
   display_name: string
 }
 
-type Session = {
-  id: number
-  tasting_date: string
-  location: string
+const DEFAULT_CATEGORIES = [
+  'Scotch',
+  'Bourbon',
+  'American',
+  'Irish',
+  'Japanese',
+  'Canadian',
+  'Rye',
+  'Other',
+]
+
+function isHeicLike(file: File) {
+  const name = file.name.toLowerCase()
+  const type = (file.type || '').toLowerCase()
+
+  return (
+    type.includes('heic') ||
+    type.includes('heif') ||
+    name.endsWith('.heic') ||
+    name.endsWith('.heif')
+  )
 }
 
-type ReviewEntry = {
-  reviewer_id: string
-  rating: string
-  notes: string
-}
+async function convertHeicToJpeg(file: File): Promise<File> {
+  const mod = await import('heic2any')
+  const heic2any = mod.default
 
-function makeEmptyEntry(): ReviewEntry {
-  return {
-    reviewer_id: '',
-    rating: '',
-    notes: '',
-  }
-}
-
-export default function NewReviewPage() {
-  const [whiskies, setWhiskies] = useState<Whisky[]>([])
-  const [profiles, setProfiles] = useState<Profile[]>([])
-  const [sessions, setSessions] = useState<Session[]>([])
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
-
-  const [form, setForm] = useState({
-    review_date: new Date().toISOString().slice(0, 10),
-    location_choice: '',
-    new_location: '',
-    whisky_id: '',
+  const result = await heic2any({
+    blob: file,
+    toType: 'image/jpeg',
+    quality: 0.9,
   })
 
-  const [entries, setEntries] = useState<ReviewEntry[]>([
-    makeEmptyEntry(),
-    makeEmptyEntry(),
-  ])
+  const blob = Array.isArray(result) ? result[0] : result
+
+  if (!(blob instanceof Blob)) {
+    throw new Error('HEIC conversion failed.')
+  }
+
+  return new File(
+    [blob],
+    file.name.replace(/\.(heic|heif)$/i, '.jpg'),
+    { type: 'image/jpeg' }
+  )
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+export default function NewBottlePage() {
+  const [profiles, setProfiles] = useState<Profile[]>([])
+  const [loading, setLoading] = useState(false)
+  const [message, setMessage] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+
+  const [form, setForm] = useState({
+    brand: '',
+    name: '',
+    category_choice: '',
+    new_category: '',
+    age_years: '',
+    cost: '',
+    provider_choice: '',
+    new_provider_name: '',
+    date_added: new Date().toISOString().slice(0, 10),
+  })
 
   useEffect(() => {
-    async function loadData() {
-      const [
-        { data: whiskiesData, error: whiskiesError },
-        { data: profilesData, error: profilesError },
-        { data: sessionsData, error: sessionsError },
-      ] = await Promise.all([
-        supabase
-          .from('whiskies')
-          .select('id, brand, name')
-          .order('brand', { ascending: true }),
-        supabase
-          .from('profiles')
-          .select('id, display_name')
-          .order('display_name', { ascending: true }),
-        supabase
-          .from('tasting_sessions')
-          .select('id, tasting_date, location')
-          .order('location', { ascending: true }),
-      ])
+    async function loadProfiles() {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, display_name')
+        .order('display_name', { ascending: true })
 
-      if (whiskiesError || profilesError || sessionsError) {
-        setMessage(
-          whiskiesError?.message ||
-            profilesError?.message ||
-            sessionsError?.message ||
-            'Failed to load data.'
-        )
+      if (error) {
+        setMessage(`Failed to load providers: ${error.message}`)
         return
       }
 
-      setWhiskies(whiskiesData ?? [])
-      setProfiles(profilesData ?? [])
-      setSessions((sessionsData ?? []) as Session[])
+      setProfiles(data ?? [])
     }
 
-    loadData()
+    loadProfiles()
   }, [])
 
-  const uniqueLocations = useMemo(() => {
-    return Array.from(
-      new Set((sessions ?? []).map((s) => s.location).filter(Boolean))
-    ).sort((a, b) => a.localeCompare(b))
-  }, [sessions])
+  const categoryOptions = useMemo(() => {
+    const set = new Set(DEFAULT_CATEGORIES)
 
-  function updateEntry(index: number, patch: Partial<ReviewEntry>) {
-    setEntries((current) =>
-      current.map((entry, i) => (i === index ? { ...entry, ...patch } : entry))
-    )
+    if (
+      form.category_choice &&
+      form.category_choice !== '__new__' &&
+      form.category_choice.trim()
+    ) {
+      set.add(form.category_choice.trim())
+    }
+
+    return Array.from(set)
+  }, [form.category_choice])
+
+  function makeBottleId() {
+    const cleanBrand = form.brand.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+    const cleanName = form.name.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
+    return `${cleanBrand}-${cleanName}`.slice(0, 40)
   }
 
-  function addEntry() {
-    setEntries((current) => [...current, makeEmptyEntry()])
-  }
+  async function createProviderIfNeeded() {
+    if (form.provider_choice !== '__new__') {
+      return form.provider_choice || null
+    }
 
-  function removeEntry(index: number) {
-    setEntries((current) => {
-      if (current.length === 1) return current
-      return current.filter((_, i) => i !== index)
+    const displayName = form.new_provider_name.trim()
+    if (!displayName) {
+      throw new Error('Please enter the new provider name.')
+    }
+
+    const generatedId = `P-${slugify(displayName)}-${Date.now().toString(36)}`
+
+    const { error } = await supabase.from('profiles').insert({
+      id: generatedId,
+      display_name: displayName,
     })
-  }
-
-  async function getNextSessionId() {
-    const { data, error } = await supabase
-      .from('tasting_sessions')
-      .select('id')
-      .order('id', { ascending: false })
-      .limit(1)
 
     if (error) {
-      throw new Error(`Could not determine next tasting session id: ${error.message}`)
+      throw new Error(`Could not create new provider: ${error.message}`)
     }
 
-    const highestId = data && data.length > 0 ? Number(data[0].id) : 0
+    setProfiles((current) =>
+      [...current, { id: generatedId, display_name: displayName }].sort((a, b) =>
+        a.display_name.localeCompare(b.display_name)
+      )
+    )
 
-    if (Number.isNaN(highestId)) {
-      throw new Error('Existing tasting session ids are not numeric.')
-    }
-
-    return highestId + 1
+    return generatedId
   }
 
-  async function getOrCreateSession(reviewDate: string, location: string) {
-    const { data: existingSession, error: findError } = await supabase
-      .from('tasting_sessions')
-      .select('id, tasting_date, location')
-      .eq('tasting_date', reviewDate)
-      .eq('location', location)
-      .limit(1)
-      .maybeSingle()
+  async function uploadBottlePhoto(bottleId: string) {
+    if (!file) return null
 
-    if (findError) {
-      throw new Error(`Could not look up tasting session: ${findError.message}`)
+    let uploadFile = file
+
+    if (isHeicLike(file)) {
+      uploadFile = await convertHeicToJpeg(file)
     }
 
-    if (existingSession?.id != null) {
-      return Number(existingSession.id)
+    const ext = uploadFile.name.split('.').pop() || 'jpg'
+    const safeExt = ext.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+    const path = `${bottleId}.${safeExt}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('bottle-photos')
+      .upload(path, uploadFile, {
+        upsert: true,
+        contentType: uploadFile.type || 'image/jpeg',
+      })
+
+    if (uploadError) {
+      throw new Error(`Photo upload failed: ${uploadError.message}`)
     }
 
-    const nextId = await getNextSessionId()
+    const { data } = supabase.storage.from('bottle-photos').getPublicUrl(path)
 
-    const { data: newSession, error: insertError } = await supabase
-      .from('tasting_sessions')
-      .insert([
-        {
-          id: nextId,
-          tasting_date: reviewDate,
-          location,
-        },
-      ])
-      .select('id')
-      .single()
-
-    if (insertError) {
-      throw new Error(`Could not create tasting session: ${insertError.message}`)
-    }
-
-    return Number(newSession.id)
+    return data.publicUrl
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setMessage('')
 
-    const finalLocation =
-      form.location_choice === '__new__'
-        ? form.new_location.trim()
-        : form.location_choice.trim()
-
-    if (!form.review_date) {
-      setMessage('Please choose a review date.')
+    if (!form.brand.trim() || !form.name.trim()) {
+      setMessage('Brand and bottle name are required.')
       return
     }
 
-    if (!finalLocation) {
-      setMessage('Please choose or enter a location.')
-      return
-    }
+    const finalCategory =
+      form.category_choice === '__new__'
+        ? form.new_category.trim()
+        : form.category_choice.trim()
 
-    if (!form.whisky_id) {
-      setMessage('Please select a bottle.')
-      return
-    }
-
-    const filledEntries = entries.filter(
-      (entry) =>
-        entry.reviewer_id.trim() || entry.rating.trim() || entry.notes.trim()
-    )
-
-    if (filledEntries.length === 0) {
-      setMessage('Please enter at least one review.')
-      return
-    }
-
-    for (const entry of filledEntries) {
-      if (!entry.reviewer_id || !entry.rating) {
-        setMessage('Each review row needs both a reviewer and a rating.')
-        return
-      }
-
-      const numericRating = Number(entry.rating)
-      if (Number.isNaN(numericRating) || numericRating < 0 || numericRating > 10) {
-        setMessage('Ratings must be between 0 and 10.')
-        return
-      }
-    }
-
-    const reviewerIds = filledEntries.map((entry) => entry.reviewer_id)
-    const duplicateReviewerIds = reviewerIds.filter(
-      (id, index) => reviewerIds.indexOf(id) !== index
-    )
-
-    if (duplicateReviewerIds.length > 0) {
-      setMessage('The same reviewer appears more than once.')
+    if (!finalCategory) {
+      setMessage('Please choose a category or add a new one.')
       return
     }
 
     setLoading(true)
 
     try {
-      const sessionId = await getOrCreateSession(form.review_date, finalLocation)
+      const id = makeBottleId()
+      const providerId = await createProviderIfNeeded()
+      const imageUrl = file ? await uploadBottlePhoto(id) : null
 
-      const reviewRows = filledEntries.map((entry) => ({
-        id: crypto.randomUUID(),
-        review_date: form.review_date,
-        session_id: sessionId,
-        profile_id: entry.reviewer_id,
-        whisky_id: form.whisky_id,
-        rating: Number(entry.rating),
-        notes: entry.notes.trim() || null,
-      }))
-
-      const { error: reviewError } = await supabase
-        .from('reviews')
-        .insert(reviewRows)
-
-      if (reviewError) {
-        throw new Error(`Could not save reviews: ${reviewError.message}`)
-      }
-
-      setMessage(`Saved ${reviewRows.length} review${reviewRows.length === 1 ? '' : 's'}.`)
-      setForm({
-        review_date: new Date().toISOString().slice(0, 10),
-        location_choice: '',
-        new_location: '',
-        whisky_id: '',
+      const { error } = await supabase.from('whiskies').insert({
+        id,
+        brand: form.brand.trim(),
+        name: form.name.trim(),
+        category: finalCategory,
+        age_years: form.age_years ? Number(form.age_years) : null,
+        cost: form.cost ? Number(form.cost) : null,
+        provided_by_profile_id: providerId,
+        date_added: form.date_added || null,
+        image_url: imageUrl,
       })
-      setEntries([makeEmptyEntry(), makeEmptyEntry()])
 
-      const { data: refreshedSessions } = await supabase
-        .from('tasting_sessions')
-        .select('id, tasting_date, location')
-        .order('location', { ascending: true })
-
-      if (refreshedSessions) {
-        setSessions(refreshedSessions as Session[])
+      if (error) {
+        throw new Error(`Could not add bottle: ${error.message}`)
       }
+
+      setMessage(`Bottle added successfully. ID: ${id}`)
+      setForm({
+        brand: '',
+        name: '',
+        category_choice: '',
+        new_category: '',
+        age_years: '',
+        cost: '',
+        provider_choice: '',
+        new_provider_name: '',
+        date_added: new Date().toISOString().slice(0, 10),
+      })
+      setFile(null)
+
+      const input = document.getElementById('new-bottle-photo') as HTMLInputElement | null
+      if (input) input.value = ''
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Unknown error saving reviews.')
+      setMessage(err instanceof Error ? err.message : 'Unknown error adding bottle.')
     }
 
     setLoading(false)
   }
 
   return (
-    <main style={{ maxWidth: 860, margin: '0 auto', padding: '8px 24px 24px' }}>
-      <section style={heroStyle}>
-        <h1 style={heroTitle}>Add Group Reviews</h1>
-        <p style={heroText}>
-          Add several people’s reviews for the same bottle, date, and location.
-        </p>
+    <main
+      style={{
+        maxWidth: 760,
+        margin: '0 auto',
+        padding: '8px 24px 24px',
+      }}
+    >
+      <section
+        style={{
+          borderRadius: 24,
+          padding: 30,
+          background: 'linear-gradient(180deg, #eaf1fb 0%, #dbe7f6 100%)',
+          border: '1px solid rgba(255,255,255,0.55)',
+          boxShadow: '0 18px 40px rgba(0,0,0,0.30)',
+        }}
+      >
+        <div style={{ marginBottom: 24 }}>
+          <div
+            style={{
+              fontSize: 13,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: '#315b9d',
+              fontWeight: 800,
+              marginBottom: 8,
+            }}
+          >
+            Bottle Entry
+          </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 18 }}>
+          <h1
+            style={{
+              fontSize: 42,
+              lineHeight: 1.05,
+              fontWeight: 800,
+              margin: 0,
+              color: '#0f172a',
+            }}
+          >
+            Add New Bottle
+          </h1>
+
+          <p
+            style={{
+              fontSize: 15,
+              color: '#334155',
+              marginTop: 10,
+              marginBottom: 0,
+            }}
+          >
+            Add a new bottle to the club and optionally upload a photo right away.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 16 }}>
+          <Field label="Brand">
+            <input
+              value={form.brand}
+              onChange={(e) => setForm({ ...form, brand: e.target.value })}
+              style={inputStyle}
+              placeholder="Mortlach"
+            />
+          </Field>
+
+          <Field label="Bottle Name">
+            <input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              style={inputStyle}
+              placeholder="Distiller's Dram"
+            />
+          </Field>
+
           <div
             style={{
               display: 'grid',
@@ -293,168 +323,129 @@ export default function NewReviewPage() {
               gap: 16,
             }}
           >
-            <Field label="Review Date">
-              <input
-                type="date"
-                value={form.review_date}
-                onChange={(e) => setForm({ ...form, review_date: e.target.value })}
-                style={inputStyle}
-              />
-            </Field>
-
-            <Field label="Bottle">
+            <Field label="Category">
               <select
-                value={form.whisky_id}
-                onChange={(e) => setForm({ ...form, whisky_id: e.target.value })}
+                value={form.category_choice}
+                onChange={(e) => setForm({ ...form, category_choice: e.target.value })}
                 style={inputStyle}
               >
-                <option value="">Select bottle</option>
-                {whiskies.map((whisky) => (
-                  <option key={whisky.id} value={whisky.id}>
-                    {whisky.brand} {whisky.name}
+                <option value="">Select category</option>
+                {categoryOptions.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
                   </option>
                 ))}
+                <option value="__new__">Add new category...</option>
               </select>
+            </Field>
+
+            <Field label="Age">
+              <input
+                type="number"
+                step="0.1"
+                value={form.age_years}
+                onChange={(e) => setForm({ ...form, age_years: e.target.value })}
+                style={inputStyle}
+                placeholder="16"
+              />
             </Field>
           </div>
 
-          <Field label="Location">
+          {form.category_choice === '__new__' ? (
+            <Field label="New Category">
+              <input
+                value={form.new_category}
+                onChange={(e) => setForm({ ...form, new_category: e.target.value })}
+                style={inputStyle}
+                placeholder="Enter new category"
+              />
+            </Field>
+          ) : null}
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 16,
+            }}
+          >
+            <Field label="Cost">
+              <input
+                type="number"
+                step="0.01"
+                value={form.cost}
+                onChange={(e) => setForm({ ...form, cost: e.target.value })}
+                style={inputStyle}
+                placeholder="200"
+              />
+            </Field>
+
+            <Field label="Date Added">
+              <input
+                type="date"
+                value={form.date_added}
+                onChange={(e) => setForm({ ...form, date_added: e.target.value })}
+                style={inputStyle}
+              />
+            </Field>
+          </div>
+
+          <Field label="Provided By">
             <select
-              value={form.location_choice}
-              onChange={(e) => setForm({ ...form, location_choice: e.target.value })}
+              value={form.provider_choice}
+              onChange={(e) => setForm({ ...form, provider_choice: e.target.value })}
               style={inputStyle}
             >
-              <option value="">Select location</option>
-              {uniqueLocations.map((location) => (
-                <option key={location} value={location}>
-                  {location}
+              <option value="">Select provider</option>
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.display_name}
                 </option>
               ))}
-              <option value="__new__">Add new location...</option>
+              <option value="__new__">Add new person...</option>
             </select>
           </Field>
 
-          {form.location_choice === '__new__' ? (
-            <Field label="New Location">
+          {form.provider_choice === '__new__' ? (
+            <Field label="New Person Name">
               <input
-                type="text"
-                placeholder="Enter new location"
-                value={form.new_location}
-                onChange={(e) => setForm({ ...form, new_location: e.target.value })}
+                value={form.new_provider_name}
+                onChange={(e) => setForm({ ...form, new_provider_name: e.target.value })}
                 style={inputStyle}
+                placeholder="Enter new person name"
               />
             </Field>
           ) : null}
 
-          <div style={{ display: 'grid', gap: 12 }}>
-            <div
-              style={{
-                fontSize: 18,
-                fontWeight: 800,
-                color: '#0f172a',
-                marginTop: 4,
-              }}
-            >
-              Reviews
-            </div>
+          <Field label="Bottle Photo">
+            <input
+              id="new-bottle-photo"
+              type="file"
+              accept="image/*,.heic,.heif"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              style={inputStyle}
+            />
+          </Field>
 
-            {entries.map((entry, index) => (
-              <div key={index} style={entryCardStyle}>
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: 12,
-                    gap: 12,
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <div style={{ fontWeight: 700, color: '#0f172a' }}>
-                    Review #{index + 1}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => removeEntry(index)}
-                    style={secondaryButtonStyle}
-                  >
-                    Remove
-                  </button>
-                </div>
-
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'minmax(220px, 1fr) 140px',
-                    gap: 12,
-                  }}
-                >
-                  <Field label="Reviewer">
-                    <select
-                      value={entry.reviewer_id}
-                      onChange={(e) =>
-                        updateEntry(index, { reviewer_id: e.target.value })
-                      }
-                      style={inputStyle}
-                    >
-                      <option value="">Select reviewer</option>
-                      {profiles.map((profile) => (
-                        <option key={profile.id} value={profile.id}>
-                          {profile.display_name}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-
-                  <Field label="Rating">
-                    <input
-                      type="number"
-                      min="0"
-                      max="10"
-                      step="0.1"
-                      placeholder="8.5"
-                      value={entry.rating}
-                      onChange={(e) =>
-                        updateEntry(index, { rating: e.target.value })
-                      }
-                      style={inputStyle}
-                    />
-                  </Field>
-                </div>
-
-                <div style={{ marginTop: 12 }}>
-                  <Field label="Notes">
-                    <textarea
-                      rows={3}
-                      placeholder="Notes"
-                      value={entry.notes}
-                      onChange={(e) =>
-                        updateEntry(index, { notes: e.target.value })
-                      }
-                      style={{ ...inputStyle, resize: 'vertical' }}
-                    />
-                  </Field>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <button type="button" onClick={addEntry} style={secondaryButtonStyle}>
-              Add Another Reviewer
-            </button>
-
+          <div
+            style={{
+              display: 'flex',
+              gap: 12,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              marginTop: 6,
+            }}
+          >
             <button type="submit" disabled={loading} style={buttonStyle}>
-              {loading ? 'Saving...' : 'Save Group Reviews'}
+              {loading ? 'Saving Bottle...' : 'Add Bottle'}
             </button>
-          </div>
 
-          {message ? (
-            <div style={{ color: '#1e3a5f', fontSize: 14, fontWeight: 600 }}>
-              {message}
-            </div>
-          ) : null}
+            {message ? (
+              <div style={{ color: '#1e3a5f', fontSize: 14, fontWeight: 600 }}>
+                {message}
+              </div>
+            ) : null}
+          </div>
         </form>
       </section>
     </main>
@@ -470,33 +461,18 @@ function Field({
 }) {
   return (
     <label style={{ display: 'grid', gap: 8 }}>
-      <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{label}</span>
+      <span
+        style={{
+          fontSize: 13,
+          fontWeight: 700,
+          color: '#1e293b',
+        }}
+      >
+        {label}
+      </span>
       {children}
     </label>
   )
-}
-
-const heroStyle: React.CSSProperties = {
-  borderRadius: 24,
-  padding: 30,
-  background: 'linear-gradient(180deg, #eaf1fb 0%, #dbe7f6 100%)',
-  border: '1px solid rgba(255,255,255,0.55)',
-  boxShadow: '0 18px 40px rgba(0,0,0,0.30)',
-}
-
-const heroTitle: React.CSSProperties = {
-  fontSize: 42,
-  lineHeight: 1.05,
-  fontWeight: 800,
-  margin: 0,
-  color: '#0f172a',
-}
-
-const heroText: React.CSSProperties = {
-  fontSize: 15,
-  color: '#334155',
-  marginTop: 10,
-  marginBottom: 20,
 }
 
 const inputStyle: React.CSSProperties = {
@@ -508,13 +484,7 @@ const inputStyle: React.CSSProperties = {
   background: '#ffffff',
   color: '#0f172a',
   outline: 'none',
-}
-
-const entryCardStyle: React.CSSProperties = {
-  borderRadius: 18,
-  padding: 16,
-  background: '#f8fbff',
-  border: '1px solid #d7e2f0',
+  boxShadow: 'inset 0 1px 2px rgba(15, 23, 42, 0.04)',
 }
 
 const buttonStyle: React.CSSProperties = {
@@ -527,16 +497,5 @@ const buttonStyle: React.CSSProperties = {
   fontSize: 15,
   fontWeight: 800,
   cursor: 'pointer',
-}
-
-const secondaryButtonStyle: React.CSSProperties = {
-  display: 'inline-block',
-  padding: '12px 16px',
-  border: '1px solid #bfd0e6',
-  borderRadius: 14,
-  background: '#ffffff',
-  color: '#0f172a',
-  fontSize: 14,
-  fontWeight: 700,
-  cursor: 'pointer',
+  boxShadow: '0 8px 18px rgba(37, 99, 235, 0.22)',
 }
