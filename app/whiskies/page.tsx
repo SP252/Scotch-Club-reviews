@@ -1,222 +1,232 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 
-type Profile = {
+type MaybeArray<T> = T | T[] | null
+
+type ReviewRow = {
   id: string
-  display_name: string
+  review_date: string
+  rating: number
+  notes: string | null
+  whisky_id: string
+  profile: MaybeArray<{ display_name: string }>
+  whisky: MaybeArray<{ id: string; brand: string; name: string; category: string | null }>
+  session: MaybeArray<{ tasting_date: string; location: string }>
 }
 
-export default function NewBottlePage() {
-  const [profiles, setProfiles] = useState<Profile[]>([])
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState('')
+type Review = {
+  id: string
+  review_date: string
+  rating: number
+  notes: string | null
+  whisky_id: string
+  profile: { display_name: string } | null
+  whisky: { id: string; brand: string; name: string; category: string | null } | null
+  session: { tasting_date: string; location: string } | null
+}
 
-  const [form, setForm] = useState({
-    id: '',
-    brand: '',
-    name: '',
-    category: '',
-    age_years: '',
-    cost: '',
-    provided_by_profile_id: '',
-    date_added: new Date().toISOString().slice(0, 10),
-  })
+function firstOrSelf<T>(value: MaybeArray<T>): T | null {
+  if (!value) return null
+  return Array.isArray(value) ? value[0] ?? null : value
+}
+
+function normalize(text: string) {
+  return text.toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+export default function HomePage() {
+  const [reviews, setReviews] = useState<Review[]>([])
+  const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   useEffect(() => {
-    async function loadProfiles() {
+    async function loadReviews() {
+      setLoading(true)
+      setError('')
+
       const { data, error } = await supabase
-        .from('profiles')
-        .select('id, display_name')
-        .order('display_name', { ascending: true })
+        .from('reviews')
+        .select(`
+          id,
+          review_date,
+          rating,
+          notes,
+          whisky_id,
+          profile:profiles(display_name),
+          whisky:whiskies(id, brand, name, category),
+          session:tasting_sessions(tasting_date, location)
+        `)
+        .order('review_date', { ascending: false })
+        .limit(200)
 
       if (error) {
-        setMessage(error.message)
+        setError(error.message)
+        setLoading(false)
         return
       }
 
-      setProfiles(data ?? [])
+      const normalized: Review[] = ((data ?? []) as ReviewRow[]).map((review) => ({
+        id: review.id,
+        review_date: review.review_date,
+        rating: Number(review.rating),
+        notes: review.notes,
+        whisky_id: review.whisky_id,
+        profile: firstOrSelf(review.profile),
+        whisky: firstOrSelf(review.whisky),
+        session: firstOrSelf(review.session),
+      }))
+
+      setReviews(normalized)
+      setLoading(false)
     }
 
-    loadProfiles()
+    loadReviews()
   }, [])
 
-  function makeBottleId() {
-    const cleanBrand = form.brand.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
-    const cleanName = form.name.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
-    return `${cleanBrand}-${cleanName}`.slice(0, 40)
-  }
+  const filteredReviews = useMemo(() => {
+    const q = normalize(search)
+    if (!q) return reviews
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault()
-    setMessage('')
+    return reviews.filter((review) => {
+      const reviewer = review.profile?.display_name ?? ''
+      const brand = review.whisky?.brand ?? ''
+      const name = review.whisky?.name ?? ''
+      const bottle = `${brand} ${name}`
+      const category = review.whisky?.category ?? ''
+      const location = review.session?.location ?? ''
+      const notes = review.notes ?? ''
+      const date = review.review_date ?? ''
 
-    if (!form.brand.trim() || !form.name.trim()) {
-      setMessage('Brand and bottle name are required.')
-      return
-    }
+      const searchable = normalize(
+        [reviewer, brand, name, bottle, category, location, notes, date].join(' ')
+      )
 
-    setLoading(true)
-
-    const bottleId = form.id.trim() || makeBottleId()
-
-    const { error } = await supabase.from('whiskies').insert({
-      id: bottleId,
-      brand: form.brand.trim(),
-      name: form.name.trim(),
-      category: form.category.trim() || null,
-      age_years: form.age_years ? Number(form.age_years) : null,
-      cost: form.cost ? Number(form.cost) : null,
-      provided_by_profile_id: form.provided_by_profile_id || null,
-      date_added: form.date_added || null,
+      return searchable.includes(q)
     })
-
-    if (error) {
-      setMessage(error.message)
-      setLoading(false)
-      return
-    }
-
-    setMessage(`Bottle added successfully with ID: ${bottleId}`)
-    setForm({
-      id: '',
-      brand: '',
-      name: '',
-      category: '',
-      age_years: '',
-      cost: '',
-      provided_by_profile_id: '',
-      date_added: new Date().toISOString().slice(0, 10),
-    })
-    setLoading(false)
-  }
+  }, [reviews, search])
 
   return (
-    <main style={{ maxWidth: 900, margin: '0 auto', padding: 24 }}>
+    <main style={{ maxWidth: 1000, margin: '0 auto', padding: 8 }}>
       <section
         style={{
-          border: '1px solid rgba(148, 163, 184, 0.16)',
-          borderRadius: 20,
-          padding: 20,
-          background:
-            'linear-gradient(135deg, rgba(30,41,59,0.85), rgba(39,30,23,0.75))',
-          boxShadow: '0 10px 30px rgba(0,0,0,0.22)',
+          borderRadius: 24,
+          padding: 28,
+          background: 'linear-gradient(180deg, #eaf1fb 0%, #dbe7f6 100%)',
+          border: '1px solid rgba(255,255,255,0.55)',
+          boxShadow: '0 18px 40px rgba(0,0,0,0.30)',
+          marginBottom: 20,
         }}
       >
-        <h1 style={{ fontSize: 32, fontWeight: 800, margin: 0, color: '#f8fafc' }}>
-          Add New Bottle
+        <h1 style={{ fontSize: 40, fontWeight: 800, margin: 0, color: '#0f172a' }}>
+          Recent Reviews
         </h1>
-        <p style={{ fontSize: 14, color: '#cbd5e1', marginTop: 6, marginBottom: 18 }}>
-          Add a new whisky to the club list.
+        <p style={{ fontSize: 15, color: '#334155', marginTop: 10, marginBottom: 16 }}>
+          Browse recent tasting notes from the club.
         </p>
 
-        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14 }}>
-          <input
-            type="text"
-            placeholder="Bottle ID (optional — auto-generated if blank)"
-            value={form.id}
-            onChange={(e) => setForm({ ...form, id: e.target.value })}
-            style={inputStyle}
-          />
+        <input
+          type="text"
+          placeholder="Search reviews, bottles, reviewers, locations, notes..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={inputStyle}
+        />
 
-          <input
-            type="text"
-            placeholder="Brand"
-            value={form.brand}
-            onChange={(e) => setForm({ ...form, brand: e.target.value })}
-            style={inputStyle}
-          />
-
-          <input
-            type="text"
-            placeholder="Bottle Name"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            style={inputStyle}
-          />
-
-          <input
-            type="text"
-            placeholder="Category (Scotch, Bourbon, Irish, etc.)"
-            value={form.category}
-            onChange={(e) => setForm({ ...form, category: e.target.value })}
-            style={inputStyle}
-          />
-
-          <input
-            type="number"
-            step="0.1"
-            placeholder="Age (optional)"
-            value={form.age_years}
-            onChange={(e) => setForm({ ...form, age_years: e.target.value })}
-            style={inputStyle}
-          />
-
-          <input
-            type="number"
-            step="0.01"
-            placeholder="Cost"
-            value={form.cost}
-            onChange={(e) => setForm({ ...form, cost: e.target.value })}
-            style={inputStyle}
-          />
-
-          <select
-            value={form.provided_by_profile_id}
-            onChange={(e) => setForm({ ...form, provided_by_profile_id: e.target.value })}
-            style={inputStyle}
-          >
-            <option value="">Select provider</option>
-            {profiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.display_name}
-              </option>
-            ))}
-          </select>
-
-          <input
-            type="date"
-            value={form.date_added}
-            onChange={(e) => setForm({ ...form, date_added: e.target.value })}
-            style={inputStyle}
-          />
-
-          <button
-            type="submit"
-            disabled={loading}
-            style={buttonStyle}
-          >
-            {loading ? 'Saving...' : 'Add Bottle'}
-          </button>
-
-          {message ? (
-            <div style={{ color: '#e5e7eb', fontSize: 14 }}>{message}</div>
-          ) : null}
-        </form>
+        <p style={{ fontSize: 14, color: '#334155', marginTop: 10, marginBottom: 0 }}>
+          Showing {filteredReviews.length} of {reviews.length} reviews
+        </p>
       </section>
+
+      {loading ? (
+        <div style={cardStyle}>Loading reviews...</div>
+      ) : error ? (
+        <div style={{ ...cardStyle, color: '#991b1b' }}>{error}</div>
+      ) : (
+        <div style={{ display: 'grid', gap: 12 }}>
+          {filteredReviews.map((review) => (
+            <div key={review.id} style={cardStyle}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: 16,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div>
+                  {review.whisky ? (
+                    <Link
+                      href={`/whiskies/${review.whisky.id}`}
+                      style={{
+                        fontWeight: 800,
+                        color: '#0f172a',
+                        textDecoration: 'none',
+                      }}
+                    >
+                      {review.whisky.brand} {review.whisky.name}
+                    </Link>
+                  ) : (
+                    <div style={{ fontWeight: 800, color: '#0f172a' }}>Unknown bottle</div>
+                  )}
+
+                  <div style={{ fontSize: 14, color: '#475569', marginTop: 4 }}>
+                    {review.profile?.display_name ?? 'Unknown reviewer'} · {review.review_date}
+                  </div>
+
+                  {review.session?.location ? (
+                    <div style={{ fontSize: 14, color: '#475569', marginTop: 4 }}>
+                      {review.session.location}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div style={pillStyle}>{review.rating}/10</div>
+              </div>
+
+              {review.notes ? (
+                <p style={{ marginTop: 12, fontSize: 14, lineHeight: 1.6, color: '#1e293b' }}>
+                  {review.notes}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
     </main>
   )
 }
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '12px 14px',
-  border: '1px solid rgba(148, 163, 184, 0.28)',
-  borderRadius: 12,
-  fontSize: 14,
-  background: 'rgba(15, 23, 36, 0.72)',
-  color: '#f8fafc',
+  padding: '13px 14px',
+  border: '1px solid #bfd0e6',
+  borderRadius: 14,
+  fontSize: 15,
+  background: '#ffffff',
+  color: '#0f172a',
+  outline: 'none',
 }
 
-const buttonStyle: React.CSSProperties = {
-  display: 'inline-block',
-  padding: '12px 16px',
-  border: '1px solid rgba(148, 163, 184, 0.25)',
-  borderRadius: 12,
-  background: 'rgba(255,255,255,0.06)',
-  color: '#f8fafc',
+const cardStyle: React.CSSProperties = {
+  borderRadius: 20,
+  padding: 18,
+  background: 'linear-gradient(180deg, #eef4fc 0%, #dfe9f7 100%)',
+  border: '1px solid #d7e2f0',
+  boxShadow: '0 12px 26px rgba(0,0,0,0.18)',
+}
+
+const pillStyle: React.CSSProperties = {
+  border: '1px solid #93c5fd',
+  borderRadius: 9999,
+  padding: '8px 14px',
   fontSize: 14,
-  fontWeight: 700,
-  cursor: 'pointer',
+  fontWeight: 800,
+  color: '#1d4ed8',
+  background: '#eff6ff',
+  whiteSpace: 'nowrap',
 }
