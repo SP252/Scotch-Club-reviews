@@ -110,67 +110,88 @@ export default function HomePage() {
   }, [reviews, search])
 
   return (
-    <main className="mx-auto max-w-4xl p-6 space-y-4">
-      <div className="space-y-3">
-        <div>
-          <h1 className="text-3xl font-bold">Scotch Club</h1>
-          <p className="text-sm text-gray-500">Recent reviews from the club</p>
-        </div>
+    <main style={{ maxWidth: 1000, margin: '0 auto', padding: 8 }}>
+      <section
+        style={{
+          borderRadius: 24,
+          padding: 28,
+          background: 'linear-gradient(180deg, #eaf1fb 0%, #dbe7f6 100%)',
+          border: '1px solid rgba(255,255,255,0.55)',
+          boxShadow: '0 18px 40px rgba(0,0,0,0.30)',
+          marginBottom: 20,
+        }}
+      >
+        <h1 style={{ fontSize: 40, fontWeight: 800, margin: 0, color: '#0f172a' }}>
+          Recent Reviews
+        </h1>
+        <p style={{ fontSize: 15, color: '#334155', marginTop: 10, marginBottom: 16 }}>
+          Browse recent tasting notes from the club.
+        </p>
 
         <input
           type="text"
           placeholder="Search reviews, bottles, reviewers, locations, notes..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full rounded-xl border p-3"
+          style={inputStyle}
         />
 
-        <p className="text-sm text-gray-500">
+        <p style={{ fontSize: 14, color: '#334155', marginTop: 10, marginBottom: 0 }}>
           Showing {filteredReviews.length} of {reviews.length} reviews
         </p>
-      </div>
+      </section>
 
       {loading ? (
-        <div className="rounded-2xl border p-6 text-sm text-gray-500">
-          Loading reviews...
-        </div>
+        <div style={cardStyle}>Loading reviews...</div>
       ) : error ? (
-        <div className="rounded-2xl border p-6 text-sm text-red-600">
-          {error}
-        </div>
+        <div style={{ ...cardStyle, color: '#991b1b' }}>{error}</div>
       ) : (
-        <div className="space-y-3">
+        <div style={{ display: 'grid', gap: 12 }}>
           {filteredReviews.map((review) => (
-            <div key={review.id} className="rounded-2xl border p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
+            <div key={review.id} style={cardStyle}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: 16,
+                  flexWrap: 'wrap',
+                }}
+              >
                 <div>
                   {review.whisky ? (
                     <Link
                       href={`/whiskies/${review.whisky.id}`}
-                      className="font-semibold underline-offset-2 hover:underline"
+                      style={{
+                        fontWeight: 800,
+                        color: '#0f172a',
+                        textDecoration: 'none',
+                      }}
                     >
                       {review.whisky.brand} {review.whisky.name}
                     </Link>
                   ) : (
-                    <h2 className="font-semibold">Unknown bottle</h2>
+                    <div style={{ fontWeight: 800, color: '#0f172a' }}>Unknown bottle</div>
                   )}
 
-                  <p className="text-sm text-gray-500">
+                  <div style={{ fontSize: 14, color: '#475569', marginTop: 4 }}>
                     {review.profile?.display_name ?? 'Unknown reviewer'} · {review.review_date}
-                  </p>
+                  </div>
 
                   {review.session?.location ? (
-                    <p className="text-sm text-gray-500">{review.session.location}</p>
+                    <div style={{ fontSize: 14, color: '#475569', marginTop: 4 }}>
+                      {review.session.location}
+                    </div>
                   ) : null}
                 </div>
 
-                <div className="rounded-full border px-3 py-1 text-sm font-medium">
-                  {review.rating}/10
-                </div>
+                <div style={pillStyle}>{review.rating}/10</div>
               </div>
 
               {review.notes ? (
-                <p className="mt-3 text-sm leading-6">{review.notes}</p>
+                <p style={{ marginTop: 12, fontSize: 14, lineHeight: 1.6, color: '#1e293b' }}>
+                  {review.notes}
+                </p>
               ) : null}
             </div>
           ))}
@@ -178,4 +199,34 @@ export default function HomePage() {
       )}
     </main>
   )
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '13px 14px',
+  border: '1px solid #bfd0e6',
+  borderRadius: 14,
+  fontSize: 15,
+  background: '#ffffff',
+  color: '#0f172a',
+  outline: 'none',
+}
+
+const cardStyle: React.CSSProperties = {
+  borderRadius: 20,
+  padding: 18,
+  background: 'linear-gradient(180deg, #eef4fc 0%, #dfe9f7 100%)',
+  border: '1px solid #d7e2f0',
+  boxShadow: '0 12px 26px rgba(0,0,0,0.18)',
+}
+
+const pillStyle: React.CSSProperties = {
+  border: '1px solid #93c5fd',
+  borderRadius: 9999,
+  padding: '8px 14px',
+  fontSize: 14,
+  fontWeight: 800,
+  color: '#1d4ed8',
+  background: '#eff6ff',
+  whiteSpace: 'nowrap',
 }
