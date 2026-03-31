@@ -143,136 +143,174 @@ export default function NewReviewPage() {
   }
 
   return (
-    <main style={{ maxWidth: 900, margin: '0 auto', padding: 24 }}>
-      <section
-        style={{
-          border: '1px solid rgba(148, 163, 184, 0.16)',
-          borderRadius: 20,
-          padding: 20,
-          background:
-            'linear-gradient(135deg, rgba(30,41,59,0.85), rgba(39,30,23,0.75))',
-          boxShadow: '0 10px 30px rgba(0,0,0,0.22)',
-        }}
-      >
-        <h1 style={{ fontSize: 32, fontWeight: 800, margin: 0, color: '#f8fafc' }}>
-          Add Review
-        </h1>
-        <p style={{ fontSize: 14, color: '#cbd5e1', marginTop: 6, marginBottom: 18 }}>
-          Add a new review for a bottle.
-        </p>
+    <main style={{ maxWidth: 760, margin: '0 auto', padding: '8px 24px 24px' }}>
+      <section style={heroStyle}>
+        <h1 style={heroTitle}>Add Review</h1>
+        <p style={heroText}>Add a new tasting note and score.</p>
 
-        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 14 }}>
-          <input
-            type="date"
-            value={form.review_date}
-            onChange={(e) => setForm({ ...form, review_date: e.target.value })}
-            style={inputStyle}
-          />
-
-          <select
-            value={form.location_choice}
-            onChange={(e) => setForm({ ...form, location_choice: e.target.value })}
-            style={inputStyle}
-          >
-            <option value="">Select location</option>
-            {uniqueLocations.map((location) => (
-              <option key={location} value={location}>
-                {location}
-              </option>
-            ))}
-            <option value="__new__">Add new location...</option>
-          </select>
-
-          {form.location_choice === '__new__' ? (
+        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 16 }}>
+          <Field label="Review Date">
             <input
-              type="text"
-              placeholder="Enter new location"
-              value={form.new_location}
-              onChange={(e) => setForm({ ...form, new_location: e.target.value })}
+              type="date"
+              value={form.review_date}
+              onChange={(e) => setForm({ ...form, review_date: e.target.value })}
               style={inputStyle}
             />
+          </Field>
+
+          <Field label="Location">
+            <select
+              value={form.location_choice}
+              onChange={(e) => setForm({ ...form, location_choice: e.target.value })}
+              style={inputStyle}
+            >
+              <option value="">Select location</option>
+              {uniqueLocations.map((location) => (
+                <option key={location} value={location}>
+                  {location}
+                </option>
+              ))}
+              <option value="__new__">Add new location...</option>
+            </select>
+          </Field>
+
+          {form.location_choice === '__new__' ? (
+            <Field label="New Location">
+              <input
+                type="text"
+                placeholder="Enter new location"
+                value={form.new_location}
+                onChange={(e) => setForm({ ...form, new_location: e.target.value })}
+                style={inputStyle}
+              />
+            </Field>
           ) : null}
 
-          <select
-            value={form.profile_id}
-            onChange={(e) => setForm({ ...form, profile_id: e.target.value })}
-            style={inputStyle}
-          >
-            <option value="">Select reviewer</option>
-            {profiles.map((profile) => (
-              <option key={profile.id} value={profile.id}>
-                {profile.display_name}
-              </option>
-            ))}
-          </select>
+          <Field label="Reviewer">
+            <select
+              value={form.profile_id}
+              onChange={(e) => setForm({ ...form, profile_id: e.target.value })}
+              style={inputStyle}
+            >
+              <option value="">Select reviewer</option>
+              {profiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.display_name}
+                </option>
+              ))}
+            </select>
+          </Field>
 
-          <select
-            value={form.whisky_id}
-            onChange={(e) => setForm({ ...form, whisky_id: e.target.value })}
-            style={inputStyle}
-          >
-            <option value="">Select bottle</option>
-            {whiskies.map((whisky) => (
-              <option key={whisky.id} value={whisky.id}>
-                {whisky.brand} {whisky.name}
-              </option>
-            ))}
-          </select>
+          <Field label="Bottle">
+            <select
+              value={form.whisky_id}
+              onChange={(e) => setForm({ ...form, whisky_id: e.target.value })}
+              style={inputStyle}
+            >
+              <option value="">Select bottle</option>
+              {whiskies.map((whisky) => (
+                <option key={whisky.id} value={whisky.id}>
+                  {whisky.brand} {whisky.name}
+                </option>
+              ))}
+            </select>
+          </Field>
 
-          <input
-            type="number"
-            min="0"
-            max="10"
-            step="0.1"
-            placeholder="Rating"
-            value={form.rating}
-            onChange={(e) => setForm({ ...form, rating: e.target.value })}
-            style={inputStyle}
-          />
+          <Field label="Rating">
+            <input
+              type="number"
+              min="0"
+              max="10"
+              step="0.1"
+              placeholder="Rating"
+              value={form.rating}
+              onChange={(e) => setForm({ ...form, rating: e.target.value })}
+              style={inputStyle}
+            />
+          </Field>
 
-          <textarea
-            rows={5}
-            placeholder="Notes"
-            value={form.notes}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            style={{ ...inputStyle, resize: 'vertical' }}
-          />
+          <Field label="Notes">
+            <textarea
+              rows={5}
+              placeholder="Notes"
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              style={{ ...inputStyle, resize: 'vertical' }}
+            />
+          </Field>
 
-          <button
-            type="submit"
-            disabled={loading}
-            style={buttonStyle}
-          >
-            {loading ? 'Saving...' : 'Save Review'}
-          </button>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button type="submit" disabled={loading} style={buttonStyle}>
+              {loading ? 'Saving...' : 'Save Review'}
+            </button>
 
-          {message ? (
-            <div style={{ color: '#e5e7eb', fontSize: 14 }}>{message}</div>
-          ) : null}
+            {message ? (
+              <div style={{ color: '#1e3a5f', fontSize: 14, fontWeight: 600 }}>{message}</div>
+            ) : null}
+          </div>
         </form>
       </section>
     </main>
   )
 }
 
+function Field({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <label style={{ display: 'grid', gap: 8 }}>
+      <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{label}</span>
+      {children}
+    </label>
+  )
+}
+
+const heroStyle: React.CSSProperties = {
+  borderRadius: 24,
+  padding: 30,
+  background: 'linear-gradient(180deg, #eaf1fb 0%, #dbe7f6 100%)',
+  border: '1px solid rgba(255,255,255,0.55)',
+  boxShadow: '0 18px 40px rgba(0,0,0,0.30)',
+}
+
+const heroTitle: React.CSSProperties = {
+  fontSize: 42,
+  lineHeight: 1.05,
+  fontWeight: 800,
+  margin: 0,
+  color: '#0f172a',
+}
+
+const heroText: React.CSSProperties = {
+  fontSize: 15,
+  color: '#334155',
+  marginTop: 10,
+  marginBottom: 20,
+}
+
 const inputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '12px 14px',
-  border: '1px solid rgba(148, 163, 184, 0.28)',
-  borderRadius: 12,
-  fontSize: 14,
-  background: 'rgba(15, 23, 36, 0.72)',
-  color: '#f8fafc',
+  padding: '13px 14px',
+  border: '1px solid #bfd0e6',
+  borderRadius: 14,
+  fontSize: 15,
+  background: '#ffffff',
+  color: '#0f172a',
+  outline: 'none',
 }
 
 const buttonStyle: React.CSSProperties = {
   display: 'inline-block',
-  padding: '12px 16px',
-  border: '1px solid rgba(148, 163, 184, 0.25)',
-  borderRadius: 12,
-  background: 'rgba(255,255,255,0.06)',
-  color: '#f8fafc',
-  fontSize: 14,
-  fontWeight: 700,
+  padding: '13px 18px',
+  border: '1px solid #1d4ed8',
+  borderRadius: 14,
+  background: 'linear-gradient(180deg, #3b82f6, #2563eb)',
+  color: '#ffffff',
+  fontSize: 15,
+  fontWeight: 800,
   cursor: 'pointer',
 }
