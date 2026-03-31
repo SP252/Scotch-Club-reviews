@@ -1,36 +1,36 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 
 type MaybeArray<T> = T | T[] | null
 
-type WhiskyRow = {
+type ReviewRow = {
   id: string
-  brand: string
-  name: string
-  cost: number | null
-  date_added: string | null
-  provided_by_profile_id: string | null
-  provided_by: MaybeArray<{ display_name: string }>
+  review_date: string
+  rating: number
+  notes: string | null
+  profile_id: string | null
+  profile: MaybeArray<{ display_name: string }>
+  whisky: MaybeArray<{ id: string; brand: string; name: string; category: string | null }>
+  session: MaybeArray<{ tasting_date: string; location: string }>
 }
 
-type Whisky = {
+type Review = {
   id: string
-  brand: string
-  name: string
-  cost: number
-  date_added: string | null
-  provided_by_profile_id: string | null
-  provided_by_name: string
+  review_date: string
+  rating: number
+  notes: string | null
+  profile_id: string | null
+  profile: { display_name: string } | null
+  whisky: { id: string; brand: string; name: string; category: string | null } | null
+  session: { tasting_date: string; location: string } | null
 }
 
-type SpendRow = {
-  providerId: string
-  providerName: string
-  year: string
-  bottleCount: number
-  totalSpend: number
+type PersonOption = {
+  id: string
+  display_name: string
 }
 
 function firstOrSelf<T>(value: MaybeArray<T>): T | null {
@@ -39,177 +39,175 @@ function firstOrSelf<T>(value: MaybeArray<T>): T | null {
 }
 
 function yearFromDate(date: string | null | undefined) {
-  if (!date) return 'Unknown'
+  if (!date) return ''
   return String(date).slice(0, 4)
 }
 
-function currency(value: number) {
-  return `$${value.toFixed(2)}`
+function normalizeCategory(category: string | null) {
+  const raw = (category ?? '').trim()
+  if (!raw) return 'Other'
+
+  const lower = raw.toLowerCase()
+  if (lower.includes('scotch')) return 'Scotch'
+  if (lower.includes('bourbon')) return 'Bourbon'
+  if (lower.includes('irish')) return 'Irish'
+  if (lower.includes('japanese')) return 'Japanese'
+  if (lower.includes('american')) return 'American'
+  if (lower.includes('canadian')) return 'Canadian'
+  if (lower.includes('rye')) return 'Rye'
+
+  return raw
 }
 
-export default function ProviderSpendPage() {
-  const [whiskies, setWhiskies] = useState<Whisky[]>([])
+const categoryOrder = [
+  'Scotch',
+  'Bourbon',
+  'American',
+  'Irish',
+  'Japanese',
+  'Canadian',
+  'Rye',
+  'Other',
+]
+
+export default function MemberRankingsPage() {
+  const [reviews, setReviews] = useState<Review[]>([])
+  const [people, setPeople] = useState<PersonOption[]>([])
+  const [selectedPersonId, setSelectedPersonId] = useState('')
   const [selectedYear, setSelectedYear] = useState('all')
+  const [selectedCategory, setSelectedCategory] = useState('all')
+  const [mode, setMode] = useState<'top' | 'bottom'>('top')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    async function loadWhiskies() {
+    async function loadData() {
       setLoading(true)
       setError('')
 
-      const { data, error } = await supabase
-        .from('whiskies')
-        .select(`
-          id,
-          brand,
-          name,
-          cost,
-          date_added,
-          provided_by_profile_id,
-          provided_by:profiles!whiskies_provided_by_profile_id_fkey(display_name)
-        `)
-        .order('date_added', { ascending: false })
+      const [{ data: peopleData, error: peopleError }, { data: reviewsData, error: reviewsError }] =
+        await Promise.all([
+          supabase
+            .from('profiles')
+            .select('id, display_name')
+            .order('display_name', { ascending: true }),
+          supabase
+            .from('reviews')
+            .select(`
+              id,
+              review_date,
+              rating,
+              notes,
+              profile_id,
+              profile:profiles(display_name),
+              whisky:whiskies(id, brand, name, category),
+              session:tasting_sessions(tasting_date, location)
+            `)
+            .order('review_date', { ascending: false }),
+        ])
 
-      if (error) {
-        setError(error.message)
+      if (peopleError) {
+        setError(peopleError.message)
         setLoading(false)
         return
       }
 
-      const normalized: Whisky[] = ((data ?? []) as WhiskyRow[]).map((row) => ({
-        id: row.id,
-        brand: row.brand,
-        name: row.name,
-        cost: row.cost != null ? Number(row.cost) : 0,
-        date_added: row.date_added,
-        provided_by_profile_id: row.provided_by_profile_id,
-        provided_by_name:
-          firstOrSelf(row.provided_by)?.display_name ??
-          row.provided_by_profile_id ??
-          'Unknown',
+      if (reviewsError) {
+        setError(reviewsError.message)
+        setLoading(false)
+        return
+      }
+
+      const normalizedPeople: PersonOption[] = (peopleData ?? []).map((p: any) => ({
+        id: p.id,
+        display_name: p.display_name,
       }))
 
-      setWhiskies(normalized)
+      const normalizedReviews: Review[] = ((reviewsData ?? []) as ReviewRow[]).map((review) => ({
+        id: review.id,
+        review_date: review.review_date,
+        rating: Number(review.rating),
+        notes: review.notes,
+        profile_id: review.profile_id,
+        profile: firstOrSelf(review.profile),
+        whisky: firstOrSelf(review.whisky),
+        session: firstOrSelf(review.session),
+      }))
+
+      setPeople(normalizedPeople)
+      setReviews(normalizedReviews)
+
+      if (normalizedPeople.length > 0) {
+        setSelectedPersonId((current) => current || normalizedPeople[0].id)
+      }
+
       setLoading(false)
     }
 
-    loadWhiskies()
+    loadData()
   }, [])
 
   const years = useMemo(() => {
+    const uniqueYears = Array.from(
+      new Set(reviews.map((r) => yearFromDate(r.review_date)).filter(Boolean))
+    ).sort((a, b) => Number(b) - Number(a))
+    return uniqueYears
+  }, [reviews])
+
+  const categories = useMemo(() => {
     const found = Array.from(
       new Set(
-        whiskies
-          .map((w) => yearFromDate(w.date_added))
-          .filter((y) => y !== 'Unknown')
+        reviews
+          .map((review) => normalizeCategory(review.whisky?.category ?? null))
+          .filter(Boolean)
       )
-    ).sort((a, b) => Number(b) - Number(a))
+    )
 
-    return found
-  }, [whiskies])
+    return found.sort((a, b) => {
+      const aIndex = categoryOrder.indexOf(a)
+      const bIndex = categoryOrder.indexOf(b)
 
-  const spendRows = useMemo(() => {
-    const map = new Map<string, SpendRow>()
-
-    for (const whisky of whiskies) {
-      const year = yearFromDate(whisky.date_added)
-
-      if (selectedYear !== 'all' && year !== selectedYear) continue
-
-      const providerId = whisky.provided_by_profile_id ?? 'unknown'
-      const providerName = whisky.provided_by_name
-      const key = `${providerId}__${year}`
-
-      if (!map.has(key)) {
-        map.set(key, {
-          providerId,
-          providerName,
-          year,
-          bottleCount: 0,
-          totalSpend: 0,
-        })
-      }
-
-      const row = map.get(key)!
-      row.bottleCount += 1
-      row.totalSpend += whisky.cost
-    }
-
-    return Array.from(map.values()).sort((a, b) => {
-      if (selectedYear === 'all' && a.year !== b.year) {
-        if (a.year === 'Unknown') return 1
-        if (b.year === 'Unknown') return -1
-        return Number(b.year) - Number(a.year)
-      }
-
-      if (b.totalSpend !== a.totalSpend) return b.totalSpend - a.totalSpend
-      return a.providerName.localeCompare(b.providerName)
+      if (aIndex === -1 && bIndex === -1) return a.localeCompare(b)
+      if (aIndex === -1) return 1
+      if (bIndex === -1) return -1
+      return aIndex - bIndex
     })
-  }, [whiskies, selectedYear])
+  }, [reviews])
 
-  const overallTotal = useMemo(
-    () => spendRows.reduce((sum, row) => sum + row.totalSpend, 0),
-    [spendRows]
-  )
+  const filteredReviews = useMemo(() => {
+    let result = reviews.filter((review) => review.profile_id === selectedPersonId)
 
-  const overallBottleCount = useMemo(
-    () => spendRows.reduce((sum, row) => sum + row.bottleCount, 0),
-    [spendRows]
-  )
-
-  const groupedRows = useMemo(() => {
     if (selectedYear !== 'all') {
-      return [['Selected Year', spendRows]] as [string, SpendRow[]][]
+      result = result.filter((review) => yearFromDate(review.review_date) === selectedYear)
     }
 
-    const groups = new Map<string, SpendRow[]>()
-
-    for (const row of spendRows) {
-      if (!groups.has(row.year)) groups.set(row.year, [])
-      groups.get(row.year)!.push(row)
+    if (selectedCategory !== 'all') {
+      result = result.filter(
+        (review) => normalizeCategory(review.whisky?.category ?? null) === selectedCategory
+      )
     }
 
-    return Array.from(groups.entries()).sort((a, b) => {
-      if (a[0] === 'Unknown') return 1
-      if (b[0] === 'Unknown') return -1
-      return Number(b[0]) - Number(a[0])
+    result = [...result].sort((a, b) => {
+      if (mode === 'top') {
+        if (b.rating !== a.rating) return b.rating - a.rating
+      } else {
+        if (a.rating !== b.rating) return a.rating - b.rating
+      }
+
+      return a.review_date.localeCompare(b.review_date)
     })
-  }, [spendRows, selectedYear])
+
+    return result.slice(0, 10)
+  }, [reviews, selectedPersonId, selectedYear, selectedCategory, mode])
+
+  const selectedPerson = people.find((p) => p.id === selectedPersonId)
 
   return (
-    <main style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
-      <section
-        style={{
-          border: '1px solid rgba(148, 163, 184, 0.16)',
-          borderRadius: 20,
-          padding: 20,
-          marginBottom: 20,
-          background:
-            'linear-gradient(135deg, rgba(30,41,59,0.85), rgba(39,30,23,0.75))',
-          boxShadow: '0 10px 30px rgba(0,0,0,0.22)',
-        }}
-      >
-        <h1
-          style={{
-            fontSize: 32,
-            fontWeight: 800,
-            margin: 0,
-            color: '#f8fafc',
-          }}
-        >
-          Provider Spend
-        </h1>
-
-        <p
-          style={{
-            fontSize: 14,
-            color: '#cbd5e1',
-            marginTop: 6,
-            marginBottom: 18,
-          }}
-        >
-          Total bottle spend by provider, broken out by year.
+    <main style={{ maxWidth: 1000, margin: '0 auto', padding: 8 }}>
+      <section style={heroStyle}>
+        <h1 style={heroTitle}>Member Rankings</h1>
+        <p style={heroText}>
+          See each member&apos;s top 10 or bottom 10 reviews by year and whiskey type.
         </p>
 
         <div
@@ -217,210 +215,138 @@ export default function ProviderSpendPage() {
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
             gap: 12,
-            marginBottom: 14,
           }}
         >
-          <div>
-            <label
-              style={{
-                display: 'block',
-                fontSize: 13,
-                color: '#cbd5e1',
-                marginBottom: 6,
-              }}
-            >
-              Year
-            </label>
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '12px 14px',
-                border: '1px solid rgba(148, 163, 184, 0.28)',
-                borderRadius: 12,
-                fontSize: 14,
-                background: 'rgba(15, 23, 36, 0.72)',
-                color: '#f8fafc',
-              }}
-            >
-              <option value="all">All Years</option>
-              {years.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-              <option value="Unknown">Unknown</option>
-            </select>
-          </div>
+          <select value={selectedPersonId} onChange={(e) => setSelectedPersonId(e.target.value)} style={inputStyle}>
+            {people.map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.display_name}
+              </option>
+            ))}
+          </select>
 
-          <div
-            style={{
-              border: '1px solid rgba(148, 163, 184, 0.16)',
-              borderRadius: 16,
-              padding: 14,
-              background: 'rgba(15, 23, 36, 0.42)',
-            }}
-          >
-            <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 6 }}>
-              Total Spend
-            </div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc' }}>
-              {currency(overallTotal)}
-            </div>
-          </div>
+          <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} style={inputStyle}>
+            <option value="all">All-time</option>
+            {years.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
 
-          <div
-            style={{
-              border: '1px solid rgba(148, 163, 184, 0.16)',
-              borderRadius: 16,
-              padding: 14,
-              background: 'rgba(15, 23, 36, 0.42)',
-            }}
-          >
-            <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 6 }}>
-              Bottles Counted
-            </div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc' }}>
-              {overallBottleCount}
-            </div>
-          </div>
+          <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} style={inputStyle}>
+            <option value="all">All Types</option>
+            {categories.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+
+          <select value={mode} onChange={(e) => setMode(e.target.value as 'top' | 'bottom')} style={inputStyle}>
+            <option value="top">Top 10</option>
+            <option value="bottom">Bottom 10</option>
+          </select>
         </div>
       </section>
 
       {loading ? (
-        <div
-          style={{
-            border: '1px solid rgba(148, 163, 184, 0.16)',
-            borderRadius: 16,
-            padding: 16,
-            color: '#cbd5e1',
-            background: 'rgba(15, 23, 36, 0.72)',
-          }}
-        >
-          Loading provider spend...
-        </div>
+        <div style={cardStyle}>Loading rankings...</div>
       ) : error ? (
-        <div
-          style={{
-            border: '1px solid rgba(248, 113, 113, 0.5)',
-            borderRadius: 16,
-            padding: 16,
-            color: '#fecaca',
-            background: 'rgba(69, 10, 10, 0.45)',
-          }}
-        >
-          {error}
-        </div>
-      ) : groupedRows.length === 0 || spendRows.length === 0 ? (
-        <div
-          style={{
-            border: '1px solid rgba(148, 163, 184, 0.16)',
-            borderRadius: 16,
-            padding: 16,
-            color: '#cbd5e1',
-            background: 'rgba(15, 23, 36, 0.72)',
-          }}
-        >
-          No provider spend found.
-        </div>
+        <div style={{ ...cardStyle, color: '#991b1b' }}>{error}</div>
+      ) : filteredReviews.length === 0 ? (
+        <div style={cardStyle}>No reviews found for that combination.</div>
       ) : (
-        <div style={{ display: 'grid', gap: 24 }}>
-          {groupedRows.map(([groupLabel, rows]) => (
-            <section key={groupLabel}>
+        <div style={{ display: 'grid', gap: 12 }}>
+          {filteredReviews.map((review, index) => (
+            <Link
+              key={review.id}
+              href={review.whisky ? `/whiskies/${review.whisky.id}` : '#'}
+              style={{ ...cardStyle, textDecoration: 'none', color: '#0f172a' }}
+            >
               <div
                 style={{
-                  marginBottom: 12,
-                  paddingBottom: 8,
-                  borderBottom: '1px solid rgba(148, 163, 184, 0.16)',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: 16,
+                  flexWrap: 'wrap',
                 }}
               >
-                <h2
-                  style={{
-                    margin: 0,
-                    fontSize: 24,
-                    fontWeight: 800,
-                    color: '#f8fafc',
-                  }}
-                >
-                  {selectedYear === 'all' ? groupLabel : selectedYear}
-                </h2>
-                <p
-                  style={{
-                    margin: '4px 0 0',
-                    fontSize: 13,
-                    color: '#cbd5e1',
-                  }}
-                >
-                  {rows.length} provider{rows.length === 1 ? '' : 's'}
-                </p>
-              </div>
-
-              <div style={{ display: 'grid', gap: 12 }}>
-                {rows.map((row, index) => (
-                  <div
-                    key={`${row.providerId}-${row.year}`}
-                    style={{
-                      border: '1px solid rgba(148, 163, 184, 0.15)',
-                      borderRadius: 18,
-                      padding: 16,
-                      background:
-                        'linear-gradient(180deg, rgba(30,41,59,0.86), rgba(30,27,24,0.86))',
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.20)',
-                      color: '#f8fafc',
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 16,
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <div>
-                        <div
-                          style={{
-                            fontSize: 18,
-                            fontWeight: 700,
-                            marginBottom: 4,
-                          }}
-                        >
-                          #{index + 1} · {row.providerName}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 14,
-                            color: '#cbd5e1',
-                          }}
-                        >
-                          {row.bottleCount} bottle{row.bottleCount === 1 ? '' : 's'} · Year: {row.year}
-                        </div>
-                      </div>
-
-                      <div
-                        style={{
-                          border: '1px solid rgba(148, 163, 184, 0.25)',
-                          borderRadius: 9999,
-                          padding: '8px 14px',
-                          fontSize: 14,
-                          fontWeight: 700,
-                          color: '#f8fafc',
-                          background: 'rgba(255,255,255,0.04)',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {currency(row.totalSpend)}
-                      </div>
-                    </div>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>
+                    #{index + 1} · {review.whisky ? `${review.whisky.brand} ${review.whisky.name}` : 'Unknown bottle'}
                   </div>
-                ))}
+                  <div style={{ fontSize: 14, color: '#475569', marginBottom: 4 }}>
+                    {selectedPerson?.display_name ?? 'Member'} · {review.review_date}
+                    {review.session?.location ? ` · ${review.session.location}` : ''}
+                  </div>
+                  {review.notes ? (
+                    <div style={{ fontSize: 14, color: '#1e293b', lineHeight: 1.5, maxWidth: 700 }}>
+                      {review.notes}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div style={pillStyle}>{review.rating.toFixed(1)} / 10</div>
               </div>
-            </section>
+            </Link>
           ))}
         </div>
       )}
     </main>
   )
+}
+
+const heroStyle: React.CSSProperties = {
+  borderRadius: 24,
+  padding: 28,
+  background: 'linear-gradient(180deg, #eaf1fb 0%, #dbe7f6 100%)',
+  border: '1px solid rgba(255,255,255,0.55)',
+  boxShadow: '0 18px 40px rgba(0,0,0,0.30)',
+  marginBottom: 20,
+}
+
+const heroTitle: React.CSSProperties = {
+  fontSize: 40,
+  fontWeight: 800,
+  margin: 0,
+  color: '#0f172a',
+}
+
+const heroText: React.CSSProperties = {
+  fontSize: 15,
+  color: '#334155',
+  marginTop: 10,
+  marginBottom: 16,
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '13px 14px',
+  border: '1px solid #bfd0e6',
+  borderRadius: 14,
+  fontSize: 15,
+  background: '#ffffff',
+  color: '#0f172a',
+  outline: 'none',
+}
+
+const cardStyle: React.CSSProperties = {
+  borderRadius: 20,
+  padding: 18,
+  background: 'linear-gradient(180deg, #eef4fc 0%, #dfe9f7 100%)',
+  border: '1px solid #d7e2f0',
+  boxShadow: '0 12px 26px rgba(0,0,0,0.18)',
+}
+
+const pillStyle: React.CSSProperties = {
+  border: '1px solid #93c5fd',
+  borderRadius: 9999,
+  padding: '8px 14px',
+  fontSize: 14,
+  fontWeight: 800,
+  color: '#1d4ed8',
+  background: '#eff6ff',
+  whiteSpace: 'nowrap',
 }
