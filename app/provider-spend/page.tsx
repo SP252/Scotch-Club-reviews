@@ -1,36 +1,36 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 
 type MaybeArray<T> = T | T[] | null
 
-type ReviewRow = {
+type WhiskyRow = {
   id: string
-  review_date: string
-  rating: number
-  notes: string | null
-  profile_id: string | null
-  profile: MaybeArray<{ display_name: string }>
-  whisky: MaybeArray<{ id: string; brand: string; name: string; category: string | null }>
-  session: MaybeArray<{ tasting_date: string; location: string }>
+  brand: string
+  name: string
+  cost: number | null
+  date_added: string | null
+  provided_by_profile_id: string | null
+  provided_by: MaybeArray<{ display_name: string }>
 }
 
-type Review = {
+type Whisky = {
   id: string
-  review_date: string
-  rating: number
-  notes: string | null
-  profile_id: string | null
-  profile: { display_name: string } | null
-  whisky: { id: string; brand: string; name: string; category: string | null } | null
-  session: { tasting_date: string; location: string } | null
+  brand: string
+  name: string
+  cost: number
+  date_added: string | null
+  provided_by_profile_id: string | null
+  provided_by_name: string
 }
 
-type PersonOption = {
-  id: string
-  display_name: string
+type SpendRow = {
+  providerId: string
+  providerName: string
+  year: string
+  bottleCount: number
+  totalSpend: number
 }
 
 function firstOrSelf<T>(value: MaybeArray<T>): T | null {
@@ -39,258 +39,229 @@ function firstOrSelf<T>(value: MaybeArray<T>): T | null {
 }
 
 function yearFromDate(date: string | null | undefined) {
-  if (!date) return ''
+  if (!date) return 'Unknown'
   return String(date).slice(0, 4)
 }
 
-function normalizeCategory(category: string | null) {
-  const raw = (category ?? '').trim()
-  if (!raw) return 'Other'
-
-  const lower = raw.toLowerCase()
-  if (lower.includes('scotch')) return 'Scotch'
-  if (lower.includes('bourbon')) return 'Bourbon'
-  if (lower.includes('irish')) return 'Irish'
-  if (lower.includes('japanese')) return 'Japanese'
-  if (lower.includes('american')) return 'American'
-  if (lower.includes('canadian')) return 'Canadian'
-  if (lower.includes('rye')) return 'Rye'
-
-  return raw
+function currency(value: number) {
+  return `$${value.toFixed(2)}`
 }
 
-const categoryOrder = [
-  'Scotch',
-  'Bourbon',
-  'American',
-  'Irish',
-  'Japanese',
-  'Canadian',
-  'Rye',
-  'Other',
-]
-
-export default function MemberRankingsPage() {
-  const [reviews, setReviews] = useState<Review[]>([])
-  const [people, setPeople] = useState<PersonOption[]>([])
-  const [selectedPersonId, setSelectedPersonId] = useState('')
+export default function ProviderSpendPage() {
+  const [whiskies, setWhiskies] = useState<Whisky[]>([])
   const [selectedYear, setSelectedYear] = useState('all')
-  const [selectedCategory, setSelectedCategory] = useState('all')
-  const [mode, setMode] = useState<'top' | 'bottom'>('top')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    async function loadData() {
+    async function loadWhiskies() {
       setLoading(true)
       setError('')
 
-      const [{ data: peopleData, error: peopleError }, { data: reviewsData, error: reviewsError }] =
-        await Promise.all([
-          supabase
-            .from('profiles')
-            .select('id, display_name')
-            .order('display_name', { ascending: true }),
-          supabase
-            .from('reviews')
-            .select(`
-              id,
-              review_date,
-              rating,
-              notes,
-              profile_id,
-              profile:profiles(display_name),
-              whisky:whiskies(id, brand, name, category),
-              session:tasting_sessions(tasting_date, location)
-            `)
-            .order('review_date', { ascending: false }),
-        ])
+      const { data, error } = await supabase
+        .from('whiskies')
+        .select(`
+          id,
+          brand,
+          name,
+          cost,
+          date_added,
+          provided_by_profile_id,
+          provided_by:profiles!whiskies_provided_by_profile_id_fkey(display_name)
+        `)
+        .order('date_added', { ascending: false })
 
-      if (peopleError) {
-        setError(peopleError.message)
+      if (error) {
+        setError(error.message)
         setLoading(false)
         return
       }
 
-      if (reviewsError) {
-        setError(reviewsError.message)
-        setLoading(false)
-        return
-      }
-
-      const normalizedPeople: PersonOption[] = (peopleData ?? []).map((p: any) => ({
-        id: p.id,
-        display_name: p.display_name,
+      const normalized: Whisky[] = ((data ?? []) as WhiskyRow[]).map((row) => ({
+        id: row.id,
+        brand: row.brand,
+        name: row.name,
+        cost: row.cost != null ? Number(row.cost) : 0,
+        date_added: row.date_added,
+        provided_by_profile_id: row.provided_by_profile_id,
+        provided_by_name:
+          firstOrSelf(row.provided_by)?.display_name ??
+          row.provided_by_profile_id ??
+          'Unknown',
       }))
 
-      const normalizedReviews: Review[] = ((reviewsData ?? []) as ReviewRow[]).map((review) => ({
-        id: review.id,
-        review_date: review.review_date,
-        rating: Number(review.rating),
-        notes: review.notes,
-        profile_id: review.profile_id,
-        profile: firstOrSelf(review.profile),
-        whisky: firstOrSelf(review.whisky),
-        session: firstOrSelf(review.session),
-      }))
-
-      setPeople(normalizedPeople)
-      setReviews(normalizedReviews)
-
-      if (normalizedPeople.length > 0) {
-        setSelectedPersonId((current) => current || normalizedPeople[0].id)
-      }
-
+      setWhiskies(normalized)
       setLoading(false)
     }
 
-    loadData()
+    loadWhiskies()
   }, [])
 
   const years = useMemo(() => {
-    const uniqueYears = Array.from(
-      new Set(reviews.map((r) => yearFromDate(r.review_date)).filter(Boolean))
-    ).sort((a, b) => Number(b) - Number(a))
-    return uniqueYears
-  }, [reviews])
-
-  const categories = useMemo(() => {
     const found = Array.from(
       new Set(
-        reviews
-          .map((review) => normalizeCategory(review.whisky?.category ?? null))
-          .filter(Boolean)
+        whiskies
+          .map((w) => yearFromDate(w.date_added))
+          .filter((y) => y !== 'Unknown')
       )
-    )
+    ).sort((a, b) => Number(b) - Number(a))
 
-    return found.sort((a, b) => {
-      const aIndex = categoryOrder.indexOf(a)
-      const bIndex = categoryOrder.indexOf(b)
+    return found
+  }, [whiskies])
 
-      if (aIndex === -1 && bIndex === -1) return a.localeCompare(b)
-      if (aIndex === -1) return 1
-      if (bIndex === -1) return -1
-      return aIndex - bIndex
-    })
-  }, [reviews])
+  const spendRows = useMemo(() => {
+    const map = new Map<string, SpendRow>()
 
-  const filteredReviews = useMemo(() => {
-    let result = reviews.filter((review) => review.profile_id === selectedPersonId)
+    for (const whisky of whiskies) {
+      const year = yearFromDate(whisky.date_added)
 
-    if (selectedYear !== 'all') {
-      result = result.filter((review) => yearFromDate(review.review_date) === selectedYear)
-    }
+      if (selectedYear !== 'all' && year !== selectedYear) continue
 
-    if (selectedCategory !== 'all') {
-      result = result.filter(
-        (review) => normalizeCategory(review.whisky?.category ?? null) === selectedCategory
-      )
-    }
+      const providerId = whisky.provided_by_profile_id ?? 'unknown'
+      const providerName = whisky.provided_by_name
+      const key = `${providerId}__${year}`
 
-    result = [...result].sort((a, b) => {
-      if (mode === 'top') {
-        if (b.rating !== a.rating) return b.rating - a.rating
-      } else {
-        if (a.rating !== b.rating) return a.rating - b.rating
+      if (!map.has(key)) {
+        map.set(key, {
+          providerId,
+          providerName,
+          year,
+          bottleCount: 0,
+          totalSpend: 0,
+        })
       }
 
-      return a.review_date.localeCompare(b.review_date)
+      const row = map.get(key)!
+      row.bottleCount += 1
+      row.totalSpend += whisky.cost
+    }
+
+    return Array.from(map.values()).sort((a, b) => {
+      if (selectedYear === 'all' && a.year !== b.year) {
+        if (a.year === 'Unknown') return 1
+        if (b.year === 'Unknown') return -1
+        return Number(b.year) - Number(a.year)
+      }
+
+      if (b.totalSpend !== a.totalSpend) return b.totalSpend - a.totalSpend
+      return a.providerName.localeCompare(b.providerName)
     })
+  }, [whiskies, selectedYear])
 
-    return result.slice(0, 10)
-  }, [reviews, selectedPersonId, selectedYear, selectedCategory, mode])
+  const overallTotal = useMemo(
+    () => spendRows.reduce((sum, row) => sum + row.totalSpend, 0),
+    [spendRows]
+  )
 
-  const selectedPerson = people.find((p) => p.id === selectedPersonId)
+  const overallBottleCount = useMemo(
+    () => spendRows.reduce((sum, row) => sum + row.bottleCount, 0),
+    [spendRows]
+  )
+
+  const groupedRows = useMemo(() => {
+    if (selectedYear !== 'all') {
+      return [['Selected Year', spendRows]] as [string, SpendRow[]][]
+    }
+
+    const groups = new Map<string, SpendRow[]>()
+
+    for (const row of spendRows) {
+      if (!groups.has(row.year)) groups.set(row.year, [])
+      groups.get(row.year)!.push(row)
+    }
+
+    return Array.from(groups.entries()).sort((a, b) => {
+      if (a[0] === 'Unknown') return 1
+      if (b[0] === 'Unknown') return -1
+      return Number(b[0]) - Number(a[0])
+    })
+  }, [spendRows, selectedYear])
 
   return (
     <main style={{ maxWidth: 1000, margin: '0 auto', padding: 8 }}>
       <section style={heroStyle}>
-        <h1 style={heroTitle}>Member Rankings</h1>
-        <p style={heroText}>
-          See each member&apos;s top 10 or bottom 10 reviews by year and whiskey type.
-        </p>
+        <h1 style={heroTitle}>Provider Spend</h1>
+        <p style={heroText}>Total bottle spend by provider, broken out by year.</p>
 
         <div
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
             gap: 12,
+            marginTop: 16,
           }}
         >
-          <select value={selectedPersonId} onChange={(e) => setSelectedPersonId(e.target.value)} style={inputStyle}>
-            {people.map((person) => (
-              <option key={person.id} value={person.id}>
-                {person.display_name}
-              </option>
-            ))}
-          </select>
-
-          <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} style={inputStyle}>
-            <option value="all">All-time</option>
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(e.target.value)}
+            style={inputStyle}
+          >
+            <option value="all">All Years</option>
             {years.map((year) => (
               <option key={year} value={year}>
                 {year}
               </option>
             ))}
+            <option value="Unknown">Unknown</option>
           </select>
 
-          <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} style={inputStyle}>
-            <option value="all">All Types</option>
-            {categories.map((category) => (
-              <option key={category} value={category}>
-                {category}
-              </option>
-            ))}
-          </select>
+          <div style={statCardStyle}>
+            <div style={{ fontSize: 13, color: '#475569', marginBottom: 6 }}>Total Spend</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#0f172a' }}>
+              {currency(overallTotal)}
+            </div>
+          </div>
 
-          <select value={mode} onChange={(e) => setMode(e.target.value as 'top' | 'bottom')} style={inputStyle}>
-            <option value="top">Top 10</option>
-            <option value="bottom">Bottom 10</option>
-          </select>
+          <div style={statCardStyle}>
+            <div style={{ fontSize: 13, color: '#475569', marginBottom: 6 }}>Bottles Counted</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#0f172a' }}>
+              {overallBottleCount}
+            </div>
+          </div>
         </div>
       </section>
 
       {loading ? (
-        <div style={cardStyle}>Loading rankings...</div>
+        <div style={cardStyle}>Loading provider spend...</div>
       ) : error ? (
         <div style={{ ...cardStyle, color: '#991b1b' }}>{error}</div>
-      ) : filteredReviews.length === 0 ? (
-        <div style={cardStyle}>No reviews found for that combination.</div>
+      ) : groupedRows.length === 0 || spendRows.length === 0 ? (
+        <div style={cardStyle}>No provider spend found.</div>
       ) : (
-        <div style={{ display: 'grid', gap: 12 }}>
-          {filteredReviews.map((review, index) => (
-            <Link
-              key={review.id}
-              href={review.whisky ? `/whiskies/${review.whisky.id}` : '#'}
-              style={{ ...cardStyle, textDecoration: 'none', color: '#0f172a' }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  justifyContent: 'space-between',
-                  gap: 16,
-                  flexWrap: 'wrap',
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>
-                    #{index + 1} · {review.whisky ? `${review.whisky.brand} ${review.whisky.name}` : 'Unknown bottle'}
-                  </div>
-                  <div style={{ fontSize: 14, color: '#475569', marginBottom: 4 }}>
-                    {selectedPerson?.display_name ?? 'Member'} · {review.review_date}
-                    {review.session?.location ? ` · ${review.session.location}` : ''}
-                  </div>
-                  {review.notes ? (
-                    <div style={{ fontSize: 14, color: '#1e293b', lineHeight: 1.5, maxWidth: 700 }}>
-                      {review.notes}
-                    </div>
-                  ) : null}
-                </div>
+        <div style={{ display: 'grid', gap: 24 }}>
+          {groupedRows.map(([groupLabel, rows]) => (
+            <section key={groupLabel}>
+              <h2 style={{ color: '#f8fafc', fontSize: 26, fontWeight: 800, marginBottom: 12 }}>
+                {selectedYear === 'all' ? groupLabel : selectedYear}
+              </h2>
 
-                <div style={pillStyle}>{review.rating.toFixed(1)} / 10</div>
+              <div style={{ display: 'grid', gap: 12 }}>
+                {rows.map((row, index) => (
+                  <div key={`${row.providerId}-${row.year}`} style={cardStyle}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 16,
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>
+                          #{index + 1} · {row.providerName}
+                        </div>
+                        <div style={{ fontSize: 14, color: '#475569' }}>
+                          {row.bottleCount} bottle{row.bottleCount === 1 ? '' : 's'} · Year: {row.year}
+                        </div>
+                      </div>
+
+                      <div style={pillStyle}>{currency(row.totalSpend)}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </Link>
+            </section>
           ))}
         </div>
       )}
@@ -318,7 +289,7 @@ const heroText: React.CSSProperties = {
   fontSize: 15,
   color: '#334155',
   marginTop: 10,
-  marginBottom: 16,
+  marginBottom: 0,
 }
 
 const inputStyle: React.CSSProperties = {
@@ -330,6 +301,14 @@ const inputStyle: React.CSSProperties = {
   background: '#ffffff',
   color: '#0f172a',
   outline: 'none',
+}
+
+const statCardStyle: React.CSSProperties = {
+  borderRadius: 16,
+  padding: 14,
+  background: '#ffffff',
+  border: '1px solid #d7e2f0',
+  boxShadow: '0 8px 18px rgba(0,0,0,0.12)',
 }
 
 const cardStyle: React.CSSProperties = {
