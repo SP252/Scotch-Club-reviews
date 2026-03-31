@@ -86,7 +86,7 @@ export default function NewReviewPage() {
 
       setWhiskies(whiskiesData ?? [])
       setProfiles(profilesData ?? [])
-      setSessions(sessionsData ?? [])
+      setSessions((sessionsData ?? []) as Session[])
     }
 
     loadData()
@@ -115,6 +115,26 @@ export default function NewReviewPage() {
     })
   }
 
+  async function getNextSessionId() {
+    const { data, error } = await supabase
+      .from('tasting_sessions')
+      .select('id')
+      .order('id', { ascending: false })
+      .limit(1)
+
+    if (error) {
+      throw new Error(`Could not determine next tasting session id: ${error.message}`)
+    }
+
+    const highestId = data && data.length > 0 ? Number(data[0].id) : 0
+
+    if (Number.isNaN(highestId)) {
+      throw new Error('Existing tasting session ids are not numeric.')
+    }
+
+    return highestId + 1
+  }
+
   async function getOrCreateSession(reviewDate: string, location: string) {
     const { data: existingSession, error: findError } = await supabase
       .from('tasting_sessions')
@@ -129,12 +149,20 @@ export default function NewReviewPage() {
     }
 
     if (existingSession?.id != null) {
-      return existingSession.id
+      return Number(existingSession.id)
     }
+
+    const nextId = await getNextSessionId()
 
     const { data: newSession, error: insertError } = await supabase
       .from('tasting_sessions')
-      .insert([{ tasting_date: reviewDate, location }])
+      .insert([
+        {
+          id: nextId,
+          tasting_date: reviewDate,
+          location,
+        },
+      ])
       .select('id')
       .single()
 
@@ -142,7 +170,7 @@ export default function NewReviewPage() {
       throw new Error(`Could not create tasting session: ${insertError.message}`)
     }
 
-    return newSession.id
+    return Number(newSession.id)
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -240,7 +268,7 @@ export default function NewReviewPage() {
         .order('location', { ascending: true })
 
       if (refreshedSessions) {
-        setSessions(refreshedSessions)
+        setSessions(refreshedSessions as Session[])
       }
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Unknown error saving reviews.')
@@ -512,4 +540,3 @@ const secondaryButtonStyle: React.CSSProperties = {
   fontWeight: 700,
   cursor: 'pointer',
 }
-
