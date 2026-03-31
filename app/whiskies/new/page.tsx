@@ -61,10 +61,15 @@ export default function NewBottlePage() {
 
   useEffect(() => {
     async function loadProfiles() {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('id, display_name')
-        .order('display_name')
+        .order('display_name', { ascending: true })
+
+      if (error) {
+        setMessage(error.message)
+        return
+      }
 
       setProfiles(data ?? [])
     }
@@ -88,11 +93,19 @@ export default function NewBottlePage() {
     }
 
     const ext = uploadFile.name.split('.').pop() || 'jpg'
-    const path = `${bottleId}.${ext}`
+    const safeExt = ext.toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+    const path = `${bottleId}.${safeExt}`
 
-    await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from('bottle-photos')
-      .upload(path, uploadFile, { upsert: true })
+      .upload(path, uploadFile, {
+        upsert: true,
+        contentType: uploadFile.type || 'image/jpeg',
+      })
+
+    if (uploadError) {
+      throw new Error(uploadError.message)
+    }
 
     const { data } = supabase.storage
       .from('bottle-photos')
@@ -101,20 +114,26 @@ export default function NewBottlePage() {
     return data.publicUrl
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    setLoading(true)
     setMessage('')
+
+    if (!form.brand.trim() || !form.name.trim()) {
+      setMessage('Brand and bottle name are required.')
+      return
+    }
+
+    setLoading(true)
 
     try {
       const id = makeBottleId()
       const image_url = file ? await uploadBottlePhoto(id) : null
 
-      await supabase.from('whiskies').insert({
+      const { error } = await supabase.from('whiskies').insert({
         id,
-        brand: form.brand,
-        name: form.name,
-        category: form.category || null,
+        brand: form.brand.trim(),
+        name: form.name.trim(),
+        category: form.category.trim() || null,
         age_years: form.age_years ? Number(form.age_years) : null,
         cost: form.cost ? Number(form.cost) : null,
         provided_by_profile_id: form.provided_by_profile_id || null,
@@ -122,7 +141,11 @@ export default function NewBottlePage() {
         image_url,
       })
 
-      setMessage('Bottle added')
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      setMessage('Bottle added successfully.')
       setForm({
         brand: '',
         name: '',
@@ -133,8 +156,11 @@ export default function NewBottlePage() {
         date_added: new Date().toISOString().slice(0, 10),
       })
       setFile(null)
+
+      const input = document.getElementById('new-bottle-photo') as HTMLInputElement | null
+      if (input) input.value = ''
     } catch (err) {
-      setMessage('Error adding bottle')
+      setMessage(err instanceof Error ? err.message : 'Error adding bottle.')
     }
 
     setLoading(false)
@@ -143,34 +169,57 @@ export default function NewBottlePage() {
   return (
     <main
       style={{
-        maxWidth: 720,
+        maxWidth: 760,
         margin: '0 auto',
-        padding: '20px',
+        padding: '8px 24px 24px',
       }}
     >
       <section
         style={{
-          borderRadius: 20,
-          padding: 28,
-          background: '#111827',
-          border: '1px solid #1f2937',
-          boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+          borderRadius: 24,
+          padding: 30,
+          background: 'linear-gradient(180deg, #eaf1fb 0%, #dbe7f6 100%)',
+          border: '1px solid rgba(255,255,255,0.55)',
+          boxShadow: '0 18px 40px rgba(0,0,0,0.30)',
         }}
       >
-        <h1
-          style={{
-            fontSize: 34,
-            fontWeight: 800,
-            color: '#f9fafb',
-            marginBottom: 6,
-          }}
-        >
-          Add New Bottle
-        </h1>
+        <div style={{ marginBottom: 24 }}>
+          <div
+            style={{
+              fontSize: 13,
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: '#315b9d',
+              fontWeight: 800,
+              marginBottom: 8,
+            }}
+          >
+            Bottle Entry
+          </div>
 
-        <p style={{ color: '#9ca3af', marginBottom: 24 }}>
-          Add a bottle and optionally upload a photo.
-        </p>
+          <h1
+            style={{
+              fontSize: 42,
+              lineHeight: 1.05,
+              fontWeight: 800,
+              margin: 0,
+              color: '#0f172a',
+            }}
+          >
+            Add New Bottle
+          </h1>
+
+          <p
+            style={{
+              fontSize: 15,
+              color: '#334155',
+              marginTop: 10,
+              marginBottom: 0,
+            }}
+          >
+            Add a new bottle to the club and optionally upload a photo right away.
+          </p>
+        </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 16 }}>
           <Field label="Brand">
@@ -178,6 +227,7 @@ export default function NewBottlePage() {
               value={form.brand}
               onChange={(e) => setForm({ ...form, brand: e.target.value })}
               style={inputStyle}
+              placeholder="Balvenie"
             />
           </Field>
 
@@ -186,35 +236,53 @@ export default function NewBottlePage() {
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               style={inputStyle}
+              placeholder="Caribbean Cask"
             />
           </Field>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 16,
+            }}
+          >
             <Field label="Category">
               <input
                 value={form.category}
                 onChange={(e) => setForm({ ...form, category: e.target.value })}
                 style={inputStyle}
+                placeholder="Scotch"
               />
             </Field>
 
             <Field label="Age">
               <input
                 type="number"
+                step="0.1"
                 value={form.age_years}
                 onChange={(e) => setForm({ ...form, age_years: e.target.value })}
                 style={inputStyle}
+                placeholder="14"
               />
             </Field>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 16,
+            }}
+          >
             <Field label="Cost">
               <input
                 type="number"
+                step="0.01"
                 value={form.cost}
                 onChange={(e) => setForm({ ...form, cost: e.target.value })}
                 style={inputStyle}
+                placeholder="89.99"
               />
             </Field>
 
@@ -231,9 +299,7 @@ export default function NewBottlePage() {
           <Field label="Provided By">
             <select
               value={form.provided_by_profile_id}
-              onChange={(e) =>
-                setForm({ ...form, provided_by_profile_id: e.target.value })
-              }
+              onChange={(e) => setForm({ ...form, provided_by_profile_id: e.target.value })}
               style={inputStyle}
             >
               <option value="">Select provider</option>
@@ -247,6 +313,7 @@ export default function NewBottlePage() {
 
           <Field label="Bottle Photo">
             <input
+              id="new-bottle-photo"
               type="file"
               accept="image/*,.heic,.heif"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
@@ -254,21 +321,48 @@ export default function NewBottlePage() {
             />
           </Field>
 
-          <button type="submit" style={buttonStyle}>
-            {loading ? 'Saving...' : 'Add Bottle'}
-          </button>
+          <div
+            style={{
+              display: 'flex',
+              gap: 12,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              marginTop: 6,
+            }}
+          >
+            <button type="submit" disabled={loading} style={buttonStyle}>
+              {loading ? 'Saving Bottle...' : 'Add Bottle'}
+            </button>
 
-          {message && <div style={{ color: '#93c5fd' }}>{message}</div>}
+            {message ? (
+              <div style={{ color: '#1e3a5f', fontSize: 14, fontWeight: 600 }}>
+                {message}
+              </div>
+            ) : null}
+          </div>
         </form>
       </section>
     </main>
   )
 }
 
-function Field({ label, children }: any) {
+function Field({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
   return (
-    <label style={{ display: 'grid', gap: 6 }}>
-      <span style={{ fontSize: 13, color: '#d1d5db', fontWeight: 600 }}>
+    <label style={{ display: 'grid', gap: 8 }}>
+      <span
+        style={{
+          fontSize: 13,
+          fontWeight: 700,
+          color: '#1e293b',
+          letterSpacing: '0.02em',
+        }}
+      >
         {label}
       </span>
       {children}
@@ -277,20 +371,26 @@ function Field({ label, children }: any) {
 }
 
 const inputStyle: React.CSSProperties = {
-  padding: '12px',
-  borderRadius: 10,
-  border: '1px solid #374151',
-  background: '#0f172a',
-  color: '#f9fafb',
+  width: '100%',
+  padding: '13px 14px',
+  border: '1px solid #bfd0e6',
+  borderRadius: 14,
+  fontSize: 15,
+  background: '#ffffff',
+  color: '#0f172a',
+  outline: 'none',
+  boxShadow: 'inset 0 1px 2px rgba(15, 23, 42, 0.04)',
 }
 
 const buttonStyle: React.CSSProperties = {
-  marginTop: 8,
-  padding: '12px',
-  borderRadius: 12,
-  border: 'none',
-  background: '#2563eb',
-  color: 'white',
-  fontWeight: 700,
+  display: 'inline-block',
+  padding: '13px 18px',
+  border: '1px solid #1d4ed8',
+  borderRadius: 14,
+  background: 'linear-gradient(180deg, #3b82f6, #2563eb)',
+  color: '#ffffff',
+  fontSize: 15,
+  fontWeight: 800,
   cursor: 'pointer',
+  boxShadow: '0 8px 18px rgba(37, 99, 235, 0.22)',
 }
