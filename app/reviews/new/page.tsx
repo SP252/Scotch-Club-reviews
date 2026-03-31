@@ -20,6 +20,20 @@ type Session = {
   location: string
 }
 
+type ReviewEntry = {
+  reviewer_id: string
+  rating: string
+  notes: string
+}
+
+function makeEmptyEntry(): ReviewEntry {
+  return {
+    reviewer_id: '',
+    rating: '',
+    notes: '',
+  }
+}
+
 export default function NewReviewPage() {
   const [whiskies, setWhiskies] = useState<Whisky[]>([])
   const [profiles, setProfiles] = useState<Profile[]>([])
@@ -31,11 +45,13 @@ export default function NewReviewPage() {
     review_date: new Date().toISOString().slice(0, 10),
     location_choice: '',
     new_location: '',
-    profile_id: '',
     whisky_id: '',
-    rating: '',
-    notes: '',
   })
+
+  const [entries, setEntries] = useState<ReviewEntry[]>([
+    makeEmptyEntry(),
+    makeEmptyEntry(),
+  ])
 
   useEffect(() => {
     async function loadData() {
@@ -44,14 +60,26 @@ export default function NewReviewPage() {
         { data: profilesData, error: profilesError },
         { data: sessionsData, error: sessionsError },
       ] = await Promise.all([
-        supabase.from('whiskies').select('id, brand, name').order('brand', { ascending: true }),
-        supabase.from('profiles').select('id, display_name').order('display_name', { ascending: true }),
-        supabase.from('tasting_sessions').select('id, tasting_date, location').order('location', { ascending: true }),
+        supabase
+          .from('whiskies')
+          .select('id, brand, name')
+          .order('brand', { ascending: true }),
+        supabase
+          .from('profiles')
+          .select('id, display_name')
+          .order('display_name', { ascending: true }),
+        supabase
+          .from('tasting_sessions')
+          .select('id, tasting_date, location')
+          .order('location', { ascending: true }),
       ])
 
       if (whiskiesError || profilesError || sessionsError) {
         setMessage(
-          whiskiesError?.message || profilesError?.message || sessionsError?.message || 'Failed to load data.'
+          whiskiesError?.message ||
+            profilesError?.message ||
+            sessionsError?.message ||
+            'Failed to load data.'
         )
         return
       }
@@ -65,10 +93,27 @@ export default function NewReviewPage() {
   }, [])
 
   const uniqueLocations = useMemo(() => {
-    return Array.from(new Set((sessions ?? []).map((s) => s.location).filter(Boolean))).sort((a, b) =>
-      a.localeCompare(b)
-    )
+    return Array.from(
+      new Set((sessions ?? []).map((s) => s.location).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b))
   }, [sessions])
+
+  function updateEntry(index: number, patch: Partial<ReviewEntry>) {
+    setEntries((current) =>
+      current.map((entry, i) => (i === index ? { ...entry, ...patch } : entry))
+    )
+  }
+
+  function addEntry() {
+    setEntries((current) => [...current, makeEmptyEntry()])
+  }
+
+  function removeEntry(index: number) {
+    setEntries((current) => {
+      if (current.length === 1) return current
+      return current.filter((_, i) => i !== index)
+    })
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -89,8 +134,41 @@ export default function NewReviewPage() {
       return
     }
 
-    if (!form.profile_id || !form.whisky_id || !form.rating) {
-      setMessage('Reviewer, bottle, and rating are required.')
+    if (!form.whisky_id) {
+      setMessage('Please select a bottle.')
+      return
+    }
+
+    const filledEntries = entries.filter(
+      (entry) =>
+        entry.reviewer_id.trim() || entry.rating.trim() || entry.notes.trim()
+    )
+
+    if (filledEntries.length === 0) {
+      setMessage('Please enter at least one review.')
+      return
+    }
+
+    for (const entry of filledEntries) {
+      if (!entry.reviewer_id || !entry.rating) {
+        setMessage('Each review row needs both a reviewer and a rating.')
+        return
+      }
+
+      const numericRating = Number(entry.rating)
+      if (Number.isNaN(numericRating) || numericRating < 0 || numericRating > 10) {
+        setMessage('Ratings must be between 0 and 10.')
+        return
+      }
+    }
+
+    const reviewerIds = filledEntries.map((entry) => entry.reviewer_id)
+    const duplicateReviewerIds = reviewerIds.filter(
+      (id, index) => reviewerIds.indexOf(id) !== index
+    )
+
+    if (duplicateReviewerIds.length > 0) {
+      setMessage('The same reviewer appears more than once.')
       return
     }
 
@@ -111,17 +189,19 @@ export default function NewReviewPage() {
       return
     }
 
-    const reviewId = crypto.randomUUID()
-
-    const { error: reviewError } = await supabase.from('reviews').insert({
-      id: reviewId,
+    const reviewRows = filledEntries.map((entry) => ({
+      id: crypto.randomUUID(),
       review_date: form.review_date,
       session_id: sessionRow?.id ?? null,
-      profile_id: form.profile_id,
+      profile_id: entry.reviewer_id,
       whisky_id: form.whisky_id,
-      rating: Number(form.rating),
-      notes: form.notes.trim() || null,
-    })
+      rating: Number(entry.rating),
+      notes: entry.notes.trim() || null,
+    }))
+
+    const { error: reviewError } = await supabase
+      .from('reviews')
+      .insert(reviewRows)
 
     if (reviewError) {
       setMessage(reviewError.message)
@@ -129,34 +209,57 @@ export default function NewReviewPage() {
       return
     }
 
-    setMessage('Review saved successfully.')
+    setMessage(`Saved ${reviewRows.length} review${reviewRows.length === 1 ? '' : 's'}.`)
     setForm({
       review_date: new Date().toISOString().slice(0, 10),
       location_choice: '',
       new_location: '',
-      profile_id: '',
       whisky_id: '',
-      rating: '',
-      notes: '',
     })
+    setEntries([makeEmptyEntry(), makeEmptyEntry()])
     setLoading(false)
   }
 
   return (
-    <main style={{ maxWidth: 760, margin: '0 auto', padding: '8px 24px 24px' }}>
+    <main style={{ maxWidth: 860, margin: '0 auto', padding: '8px 24px 24px' }}>
       <section style={heroStyle}>
-        <h1 style={heroTitle}>Add Review</h1>
-        <p style={heroText}>Add a new tasting note and score.</p>
+        <h1 style={heroTitle}>Add Group Reviews</h1>
+        <p style={heroText}>
+          Add several people’s reviews for the same bottle, date, and location.
+        </p>
 
-        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 16 }}>
-          <Field label="Review Date">
-            <input
-              type="date"
-              value={form.review_date}
-              onChange={(e) => setForm({ ...form, review_date: e.target.value })}
-              style={inputStyle}
-            />
-          </Field>
+        <form onSubmit={handleSubmit} style={{ display: 'grid', gap: 18 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 16,
+            }}
+          >
+            <Field label="Review Date">
+              <input
+                type="date"
+                value={form.review_date}
+                onChange={(e) => setForm({ ...form, review_date: e.target.value })}
+                style={inputStyle}
+              />
+            </Field>
+
+            <Field label="Bottle">
+              <select
+                value={form.whisky_id}
+                onChange={(e) => setForm({ ...form, whisky_id: e.target.value })}
+                style={inputStyle}
+              >
+                <option value="">Select bottle</option>
+                {whiskies.map((whisky) => (
+                  <option key={whisky.id} value={whisky.id}>
+                    {whisky.brand} {whisky.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
 
           <Field label="Location">
             <select
@@ -186,68 +289,115 @@ export default function NewReviewPage() {
             </Field>
           ) : null}
 
-          <Field label="Reviewer">
-            <select
-              value={form.profile_id}
-              onChange={(e) => setForm({ ...form, profile_id: e.target.value })}
-              style={inputStyle}
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 800,
+                color: '#0f172a',
+                marginTop: 4,
+              }}
             >
-              <option value="">Select reviewer</option>
-              {profiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.display_name}
-                </option>
-              ))}
-            </select>
-          </Field>
+              Reviews
+            </div>
 
-          <Field label="Bottle">
-            <select
-              value={form.whisky_id}
-              onChange={(e) => setForm({ ...form, whisky_id: e.target.value })}
-              style={inputStyle}
-            >
-              <option value="">Select bottle</option>
-              {whiskies.map((whisky) => (
-                <option key={whisky.id} value={whisky.id}>
-                  {whisky.brand} {whisky.name}
-                </option>
-              ))}
-            </select>
-          </Field>
+            {entries.map((entry, index) => (
+              <div key={index} style={entryCardStyle}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: 12,
+                    gap: 12,
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div style={{ fontWeight: 700, color: '#0f172a' }}>
+                    Review #{index + 1}
+                  </div>
 
-          <Field label="Rating">
-            <input
-              type="number"
-              min="0"
-              max="10"
-              step="0.1"
-              placeholder="Rating"
-              value={form.rating}
-              onChange={(e) => setForm({ ...form, rating: e.target.value })}
-              style={inputStyle}
-            />
-          </Field>
+                  <button
+                    type="button"
+                    onClick={() => removeEntry(index)}
+                    style={secondaryButtonStyle}
+                  >
+                    Remove
+                  </button>
+                </div>
 
-          <Field label="Notes">
-            <textarea
-              rows={5}
-              placeholder="Notes"
-              value={form.notes}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })}
-              style={{ ...inputStyle, resize: 'vertical' }}
-            />
-          </Field>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(220px, 1fr) 140px',
+                    gap: 12,
+                  }}
+                >
+                  <Field label="Reviewer">
+                    <select
+                      value={entry.reviewer_id}
+                      onChange={(e) =>
+                        updateEntry(index, { reviewer_id: e.target.value })
+                      }
+                      style={inputStyle}
+                    >
+                      <option value="">Select reviewer</option>
+                      {profiles.map((profile) => (
+                        <option key={profile.id} value={profile.id}>
+                          {profile.display_name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
 
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-            <button type="submit" disabled={loading} style={buttonStyle}>
-              {loading ? 'Saving...' : 'Save Review'}
+                  <Field label="Rating">
+                    <input
+                      type="number"
+                      min="0"
+                      max="10"
+                      step="0.1"
+                      placeholder="8.5"
+                      value={entry.rating}
+                      onChange={(e) =>
+                        updateEntry(index, { rating: e.target.value })
+                      }
+                      style={inputStyle}
+                    />
+                  </Field>
+                </div>
+
+                <div style={{ marginTop: 12 }}>
+                  <Field label="Notes">
+                    <textarea
+                      rows={3}
+                      placeholder="Notes"
+                      value={entry.notes}
+                      onChange={(e) =>
+                        updateEntry(index, { notes: e.target.value })
+                      }
+                      style={{ ...inputStyle, resize: 'vertical' }}
+                    />
+                  </Field>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <button type="button" onClick={addEntry} style={secondaryButtonStyle}>
+              Add Another Reviewer
             </button>
 
-            {message ? (
-              <div style={{ color: '#1e3a5f', fontSize: 14, fontWeight: 600 }}>{message}</div>
-            ) : null}
+            <button type="submit" disabled={loading} style={buttonStyle}>
+              {loading ? 'Saving...' : 'Save Group Reviews'}
+            </button>
           </div>
+
+          {message ? (
+            <div style={{ color: '#1e3a5f', fontSize: 14, fontWeight: 600 }}>
+              {message}
+            </div>
+          ) : null}
         </form>
       </section>
     </main>
@@ -303,6 +453,13 @@ const inputStyle: React.CSSProperties = {
   outline: 'none',
 }
 
+const entryCardStyle: React.CSSProperties = {
+  borderRadius: 18,
+  padding: 16,
+  background: '#f8fbff',
+  border: '1px solid #d7e2f0',
+}
+
 const buttonStyle: React.CSSProperties = {
   display: 'inline-block',
   padding: '13px 18px',
@@ -312,5 +469,17 @@ const buttonStyle: React.CSSProperties = {
   color: '#ffffff',
   fontSize: 15,
   fontWeight: 800,
+  cursor: 'pointer',
+}
+
+const secondaryButtonStyle: React.CSSProperties = {
+  display: 'inline-block',
+  padding: '12px 16px',
+  border: '1px solid #bfd0e6',
+  borderRadius: 14,
+  background: '#ffffff',
+  color: '#0f172a',
+  fontSize: 14,
+  fontWeight: 700,
   cursor: 'pointer',
 }
