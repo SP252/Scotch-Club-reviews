@@ -1,12 +1,23 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 
 type Profile = {
   id: string
   display_name: string
 }
+
+const DEFAULT_CATEGORIES = [
+  'Scotch',
+  'Bourbon',
+  'American',
+  'Irish',
+  'Japanese',
+  'Canadian',
+  'Rye',
+  'Other',
+]
 
 function isHeicLike(file: File) {
   const name = file.name.toLowerCase()
@@ -33,7 +44,7 @@ async function convertHeicToJpeg(file: File): Promise<File> {
   const blob = Array.isArray(result) ? result[0] : result
 
   if (!(blob instanceof Blob)) {
-    throw new Error('HEIC conversion failed')
+    throw new Error('HEIC conversion failed.')
   }
 
   return new File(
@@ -41,6 +52,14 @@ async function convertHeicToJpeg(file: File): Promise<File> {
     file.name.replace(/\.(heic|heif)$/i, '.jpg'),
     { type: 'image/jpeg' }
   )
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
 }
 
 export default function NewBottlePage() {
@@ -52,10 +71,12 @@ export default function NewBottlePage() {
   const [form, setForm] = useState({
     brand: '',
     name: '',
-    category: '',
+    category_choice: '',
+    new_category: '',
     age_years: '',
     cost: '',
-    provided_by_profile_id: '',
+    provider_choice: '',
+    new_provider_name: '',
     date_added: new Date().toISOString().slice(0, 10),
   })
 
@@ -67,7 +88,7 @@ export default function NewBottlePage() {
         .order('display_name', { ascending: true })
 
       if (error) {
-        setMessage(error.message)
+        setMessage(`Failed to load providers: ${error.message}`)
         return
       }
 
@@ -77,10 +98,52 @@ export default function NewBottlePage() {
     loadProfiles()
   }, [])
 
+  const categoryOptions = useMemo(() => {
+    const set = new Set(DEFAULT_CATEGORIES)
+    if (
+      form.category_choice &&
+      form.category_choice !== '__new__' &&
+      form.category_choice.trim()
+    ) {
+      set.add(form.category_choice.trim())
+    }
+    return Array.from(set)
+  }, [form.category_choice])
+
   function makeBottleId() {
     const cleanBrand = form.brand.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
     const cleanName = form.name.trim().toUpperCase().replace(/[^A-Z0-9]/g, '')
     return `${cleanBrand}-${cleanName}`.slice(0, 40)
+  }
+
+  async function createProviderIfNeeded() {
+    if (form.provider_choice !== '__new__') {
+      return form.provider_choice || null
+    }
+
+    const displayName = form.new_provider_name.trim()
+    if (!displayName) {
+      throw new Error('Please enter the new provider name.')
+    }
+
+    const generatedId = `P-${slugify(displayName)}-${Date.now().toString(36)}`
+
+    const { error } = await supabase.from('profiles').insert({
+      id: generatedId,
+      display_name: displayName,
+    })
+
+    if (error) {
+      throw new Error(`Could not create new provider: ${error.message}`)
+    }
+
+    setProfiles((current) =>
+      [...current, { id: generatedId, display_name: displayName }].sort((a, b) =>
+        a.display_name.localeCompare(b.display_name)
+      )
+    )
+
+    return generatedId
   }
 
   async function uploadBottlePhoto(bottleId: string) {
@@ -104,12 +167,10 @@ export default function NewBottlePage() {
       })
 
     if (uploadError) {
-      throw new Error(uploadError.message)
+      throw new Error(`Photo upload failed: ${uploadError.message}`)
     }
 
-    const { data } = supabase.storage
-      .from('bottle-photos')
-      .getPublicUrl(path)
+    const { data } = supabase.storage.from('bottle-photos').getPublicUrl(path)
 
     return data.publicUrl
   }
@@ -123,36 +184,50 @@ export default function NewBottlePage() {
       return
     }
 
+    const finalCategory =
+      form.category_choice === '__new__'
+        ? form.new_category.trim()
+        : form.category_choice.trim()
+
+    if (!finalCategory) {
+      setMessage('Please choose a category or add a new one.')
+      return
+    }
+
     setLoading(true)
 
     try {
       const id = makeBottleId()
-      const image_url = file ? await uploadBottlePhoto(id) : null
+      const providerId = await createProviderIfNeeded()
+      const imageUrl = file ? await uploadBottlePhoto(id) : null
 
       const { error } = await supabase.from('whiskies').insert({
         id,
         brand: form.brand.trim(),
         name: form.name.trim(),
-        category: form.category.trim() || null,
+        category: finalCategory,
         age_years: form.age_years ? Number(form.age_years) : null,
         cost: form.cost ? Number(form.cost) : null,
-        provided_by_profile_id: form.provided_by_profile_id || null,
-        date_added: form.date_added,
-        image_url,
+        provided_by_profile_id: providerId,
+        date_added: form.date_added || null,
+        image_url: imageUrl,
       })
 
       if (error) {
-        throw new Error(error.message)
+        throw new Error(`Could not add bottle: ${error.message}`)
       }
 
-      setMessage('Bottle added successfully.')
+      setMessage(`Bottle added successfully. ID: ${id}`)
+
       setForm({
         brand: '',
         name: '',
-        category: '',
+        category_choice: '',
+        new_category: '',
         age_years: '',
         cost: '',
-        provided_by_profile_id: '',
+        provider_choice: '',
+        new_provider_name: '',
         date_added: new Date().toISOString().slice(0, 10),
       })
       setFile(null)
@@ -160,7 +235,7 @@ export default function NewBottlePage() {
       const input = document.getElementById('new-bottle-photo') as HTMLInputElement | null
       if (input) input.value = ''
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Error adding bottle.')
+      setMessage(err instanceof Error ? err.message : 'Unknown error adding bottle.')
     }
 
     setLoading(false)
@@ -227,7 +302,7 @@ export default function NewBottlePage() {
               value={form.brand}
               onChange={(e) => setForm({ ...form, brand: e.target.value })}
               style={inputStyle}
-              placeholder="Balvenie"
+              placeholder="Mortlach"
             />
           </Field>
 
@@ -236,7 +311,7 @@ export default function NewBottlePage() {
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               style={inputStyle}
-              placeholder="Caribbean Cask"
+              placeholder="Distiller's Dram"
             />
           </Field>
 
@@ -248,12 +323,19 @@ export default function NewBottlePage() {
             }}
           >
             <Field label="Category">
-              <input
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
+              <select
+                value={form.category_choice}
+                onChange={(e) => setForm({ ...form, category_choice: e.target.value })}
                 style={inputStyle}
-                placeholder="Scotch"
-              />
+              >
+                <option value="">Select category</option>
+                {categoryOptions.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+                <option value="__new__">Add new category...</option>
+              </select>
             </Field>
 
             <Field label="Age">
@@ -263,10 +345,21 @@ export default function NewBottlePage() {
                 value={form.age_years}
                 onChange={(e) => setForm({ ...form, age_years: e.target.value })}
                 style={inputStyle}
-                placeholder="14"
+                placeholder="16"
               />
             </Field>
           </div>
+
+          {form.category_choice === '__new__' ? (
+            <Field label="New Category">
+              <input
+                value={form.new_category}
+                onChange={(e) => setForm({ ...form, new_category: e.target.value })}
+                style={inputStyle}
+                placeholder="Enter new category"
+              />
+            </Field>
+          ) : null}
 
           <div
             style={{
@@ -282,7 +375,7 @@ export default function NewBottlePage() {
                 value={form.cost}
                 onChange={(e) => setForm({ ...form, cost: e.target.value })}
                 style={inputStyle}
-                placeholder="89.99"
+                placeholder="200"
               />
             </Field>
 
@@ -298,8 +391,8 @@ export default function NewBottlePage() {
 
           <Field label="Provided By">
             <select
-              value={form.provided_by_profile_id}
-              onChange={(e) => setForm({ ...form, provided_by_profile_id: e.target.value })}
+              value={form.provider_choice}
+              onChange={(e) => setForm({ ...form, provider_choice: e.target.value })}
               style={inputStyle}
             >
               <option value="">Select provider</option>
@@ -308,8 +401,20 @@ export default function NewBottlePage() {
                   {p.display_name}
                 </option>
               ))}
+              <option value="__new__">Add new person...</option>
             </select>
           </Field>
+
+          {form.provider_choice === '__new__' ? (
+            <Field label="New Person Name">
+              <input
+                value={form.new_provider_name}
+                onChange={(e) => setForm({ ...form, new_provider_name: e.target.value })}
+                style={inputStyle}
+                placeholder="Enter new person name"
+              />
+            </Field>
+          ) : null}
 
           <Field label="Bottle Photo">
             <input
@@ -360,7 +465,6 @@ function Field({
           fontSize: 13,
           fontWeight: 700,
           color: '#1e293b',
-          letterSpacing: '0.02em',
         }}
       >
         {label}
