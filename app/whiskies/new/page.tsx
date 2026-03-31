@@ -145,7 +145,7 @@ export default function NewBottlePage() {
         throw new Error(error.message)
       }
 
-      setMessage(`Bottle added successfully.`)
+      setMessage('Bottle added successfully.')
       setForm({
         brand: '',
         name: '',
@@ -176,11 +176,11 @@ export default function NewBottlePage() {
     >
       <section
         style={{
-          border: '1px solid rgba(255,255,255,0.10)',
+          border: '1px solid rgba(180, 140, 80, 0.22)',
           borderRadius: 24,
           padding: 28,
-          background: 'rgba(24, 24, 27, 0.92)',
-          boxShadow: '0 18px 40px rgba(0,0,0,0.28)',
+          background: 'linear-gradient(180deg, #f2e7d5 0%, #eadbc4 100%)',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.30)',
         }}
       >
         <div style={{ marginBottom: 22 }}>
@@ -189,7 +189,7 @@ export default function NewBottlePage() {
               fontSize: 14,
               letterSpacing: '0.12em',
               textTransform: 'uppercase',
-              color: '#d6a85f',
+              color: '#9a6826',
               marginBottom: 8,
               fontWeight: 700,
             }}
@@ -203,7 +203,7 @@ export default function NewBottlePage() {
               lineHeight: 1.05,
               fontWeight: 800,
               margin: 0,
-              color: '#f8f5ef',
+              color: '#1e1b18',
             }}
           >
             Add New Bottle
@@ -212,7 +212,7 @@ export default function NewBottlePage() {
           <p
             style={{
               fontSize: 15,
-              color: '#cfc7ba',
+              color: '#4b4035',
               marginTop: 10,
               marginBottom: 0,
             }}
@@ -342,7 +342,7 @@ export default function NewBottlePage() {
             </button>
 
             {message ? (
-              <div style={{ color: '#e8dfd2', fontSize: 14 }}>{message}</div>
+              <div style={{ color: '#3d342b', fontSize: 14 }}>{message}</div>
             ) : null}
           </div>
         </form>
@@ -364,7 +364,7 @@ function Field({
         style={{
           fontSize: 13,
           fontWeight: 700,
-          color: '#e5dccf',
+          color: '#32281f',
           letterSpacing: '0.02em',
         }}
       >
@@ -378,23 +378,23 @@ function Field({
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '13px 14px',
-  border: '1px solid rgba(255,255,255,0.14)',
+  border: '1px solid #d3c0a7',
   borderRadius: 14,
   fontSize: 15,
-  background: '#12161c',
-  color: '#f8f5ef',
+  background: '#fffaf2',
+  color: '#1f1a16',
   outline: 'none',
 }
 
 const buttonStyle: React.CSSProperties = {
   display: 'inline-block',
   padding: '13px 18px',
-  border: '1px solid rgba(214,168,95,0.45)',
+  border: '1px solid #9a6826',
   borderRadius: 14,
   background: 'linear-gradient(180deg, #d6a85f, #b88434)',
   color: '#1a1410',
   fontSize: 15,
   fontWeight: 800,
   cursor: 'pointer',
-  boxShadow: '0 8px 18px rgba(0,0,0,0.22)',
+  boxShadow: '0 8px 18px rgba(0,0,0,0.16)',
 }
