@@ -512,5 +512,4 @@ const secondaryButtonStyle: React.CSSProperties = {
   fontWeight: 700,
   cursor: 'pointer',
 }
-What is this?
-Very important check
+
