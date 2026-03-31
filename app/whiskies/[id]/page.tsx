@@ -213,8 +213,6 @@ export default async function WhiskyDetailPage({
           >
             Edit Bottle
           </Link>
-        </div>
-      </div>
           
           <div style={{ width: 320, flexShrink: 0 }}>
             {whisky.image_url ? (
