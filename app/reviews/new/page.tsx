@@ -48,10 +48,7 @@ export default function NewReviewPage() {
     whisky_id: '',
   })
 
-  const [entries, setEntries] = useState<ReviewEntry[]>([
-    makeEmptyEntry(),
-    makeEmptyEntry(),
-  ])
+  const [entries, setEntries] = useState<ReviewEntry[]>(Array.from({ length: 8 }, () => makeEmptyEntry()))
 
   useEffect(() => {
     async function loadData() {
@@ -260,7 +257,7 @@ export default function NewReviewPage() {
         new_location: '',
         whisky_id: '',
       })
-      setEntries([makeEmptyEntry(), makeEmptyEntry()])
+      setEntries(Array.from({ length: 8 }, () => makeEmptyEntry()))
 
       const { data: refreshedSessions } = await supabase
         .from('tasting_sessions')
