@@ -56,6 +56,7 @@ function formatDate(date: string) {
 export default function EventsPage() {
   const [events, setEvents] = useState<EventGroup[]>([])
   const [selectedYear, setSelectedYear] = useState('all')
+  const [expandedEventIds, setExpandedEventIds] = useState<number[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -150,6 +151,14 @@ export default function EventsPage() {
     return events.filter((event) => yearFromDate(event.tasting_date) === selectedYear)
   }, [events, selectedYear])
 
+  function toggleEvent(eventId: number) {
+    setExpandedEventIds((current) =>
+      current.includes(eventId)
+        ? current.filter((id) => id !== eventId)
+        : [...current, eventId]
+    )
+  }
+
   return (
     <main style={{ maxWidth: 1100, margin: '0 auto', padding: 8 }}>
       <section style={heroStyle}>
@@ -187,90 +196,113 @@ export default function EventsPage() {
         <div style={cardStyle}>No events found.</div>
       ) : (
         <div style={{ display: 'grid', gap: 20 }}>
-          {filteredEvents.map((event) => (
-            <section key={event.id} style={cardStyle}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                  gap: 16,
-                  flexWrap: 'wrap',
-                  marginBottom: 14,
-                }}
-              >
-                <div>
-                  <h2
+          {filteredEvents.map((event) => {
+            const isExpanded = expandedEventIds.includes(event.id)
+
+            return (
+              <section key={event.id} style={cardStyle}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    gap: 16,
+                    flexWrap: 'wrap',
+                    marginBottom: isExpanded ? 14 : 0,
+                  }}
+                >
+                  <div>
+                    <h2
+                      style={{
+                        margin: 0,
+                        fontSize: 24,
+                        fontWeight: 800,
+                        color: '#0f172a',
+                      }}
+                    >
+                      {event.location}
+                    </h2>
+                    <div style={{ marginTop: 6, fontSize: 14, color: '#475569' }}>
+                      {formatDate(event.tasting_date)} · {event.reviews.length} review
+                      {event.reviews.length === 1 ? '' : 's'}
+                    </div>
+                  </div>
+
+                  <div
                     style={{
-                      margin: 0,
-                      fontSize: 24,
-                      fontWeight: 800,
-                      color: '#0f172a',
+                      display: 'flex',
+                      gap: 10,
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
                     }}
                   >
-                    {event.location}
-                  </h2>
-                  <div style={{ marginTop: 6, fontSize: 14, color: '#475569' }}>
-                    {formatDate(event.tasting_date)} · {event.reviews.length} review
-                    {event.reviews.length === 1 ? '' : 's'}
+                    <div style={pillStyle}>{yearFromDate(event.tasting_date)}</div>
+
+                    <button
+                      type="button"
+                      onClick={() => toggleEvent(event.id)}
+                      style={buttonStyle}
+                    >
+                      {isExpanded ? 'Hide Reviews' : 'Show Reviews'}
+                    </button>
                   </div>
                 </div>
 
-                <div style={pillStyle}>{yearFromDate(event.tasting_date)}</div>
-              </div>
+                {isExpanded ? (
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {event.reviews.map((review) => (
+                      <div key={review.id} style={innerCardStyle}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'flex-start',
+                            gap: 16,
+                            flexWrap: 'wrap',
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
+                              {review.whisky ? (
+                                <Link
+                                  href={`/whiskies/${encodeURIComponent(review.whisky.id)}`}
+                                  style={{ color: '#0f172a', textDecoration: 'none' }}
+                                >
+                                  {review.whisky.brand} {review.whisky.name}
+                                </Link>
+                              ) : (
+                                'Unknown bottle'
+                              )}
+                            </div>
 
-              <div style={{ display: 'grid', gap: 12 }}>
-                {event.reviews.map((review) => (
-                  <div key={review.id} style={innerCardStyle}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'flex-start',
-                        gap: 16,
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
-                          {review.whisky ? (
-                            <Link
-                              href={`/whiskies/${encodeURIComponent(review.whisky.id)}`}
-                              style={{ color: '#0f172a', textDecoration: 'none' }}
-                            >
-                              {review.whisky.brand} {review.whisky.name}
-                            </Link>
-                          ) : (
-                            'Unknown bottle'
-                          )}
+                            <div style={{ fontSize: 14, color: '#475569', marginTop: 4 }}>
+                              {review.profile?.display_name ?? 'Unknown reviewer'}
+                            </div>
+                          </div>
+
+                          <div style={scorePillStyle}>{review.rating}/10</div>
                         </div>
 
-                        <div style={{ fontSize: 14, color: '#475569', marginTop: 4 }}>
-                          {review.profile?.display_name ?? 'Unknown reviewer'}
-                        </div>
+                        {review.notes ? (
+                          <p
+                            style={{
+                              marginTop: 12,
+                              marginBottom: 0,
+                              fontSize: 14,
+                              lineHeight: 1.6,
+                              color: '#1e293b',
+                            }}
+                          >
+                            {review.notes}
+                          </p>
+                        ) : null}
                       </div>
-
-                      <div style={scorePillStyle}>{review.rating}/10</div>
-                    </div>
-
-                    {review.notes ? (
-                      <p
-                        style={{
-                          marginTop: 12,
-                          marginBottom: 0,
-                          fontSize: 14,
-                          lineHeight: 1.6,
-                          color: '#1e293b',
-                        }}
-                      >
-                        {review.notes}
-                      </p>
-                    ) : null}
+                    ))}
                   </div>
-                ))}
-              </div>
-            </section>
-          ))}
+                ) : null}
+              </section>
+            )
+          })}
         </div>
       )}
     </main>
@@ -345,5 +377,18 @@ const scorePillStyle: React.CSSProperties = {
   fontWeight: 800,
   color: '#1d4ed8',
   background: '#eff6ff',
+  whiteSpace: 'nowrap',
+}
+
+const buttonStyle: React.CSSProperties = {
+  display: 'inline-block',
+  padding: '8px 14px',
+  border: '1px solid #1d4ed8',
+  borderRadius: 12,
+  background: '#ffffff',
+  color: '#1d4ed8',
+  fontSize: 14,
+  fontWeight: 700,
+  cursor: 'pointer',
   whiteSpace: 'nowrap',
 }
