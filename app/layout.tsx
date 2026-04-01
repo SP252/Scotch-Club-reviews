@@ -99,6 +99,11 @@ export default function RootLayout({
                   Leaderboard
                 </Link>
 
+                <Link href="/events" style={navLinkStyle}>
+                  Events
+                </Link>
+
+                
                 <Link href="/member-rankings" style={navLinkStyle}>
                   Member Rankings
                 </Link>
