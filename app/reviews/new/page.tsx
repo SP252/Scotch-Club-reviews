@@ -22,6 +22,7 @@ type Session = {
 
 type ReviewEntry = {
   reviewer_id: string
+  new_reviewer_name: string
   rating: string
   notes: string
 }
@@ -29,9 +30,18 @@ type ReviewEntry = {
 function makeEmptyEntry(): ReviewEntry {
   return {
     reviewer_id: '',
+    new_reviewer_name: '',
     rating: '',
     notes: '',
   }
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
 }
 
 export default function NewReviewPage() {
@@ -48,7 +58,9 @@ export default function NewReviewPage() {
     whisky_id: '',
   })
 
-  const [entries, setEntries] = useState<ReviewEntry[]>(Array.from({ length: 8 }, () => makeEmptyEntry()))
+  const [entries, setEntries] = useState<ReviewEntry[]>(
+    Array.from({ length: 8 }, () => makeEmptyEntry())
+  )
 
   useEffect(() => {
     async function loadData() {
@@ -82,7 +94,7 @@ export default function NewReviewPage() {
       }
 
       setWhiskies(whiskiesData ?? [])
-      setProfiles(profilesData ?? [])
+      setProfiles((profilesData ?? []) as Profile[])
       setSessions((sessionsData ?? []) as Session[])
     }
 
@@ -170,6 +182,61 @@ export default function NewReviewPage() {
     return Number(newSession.id)
   }
 
+  async function createPersonIfNeeded(name: string) {
+    const trimmed = name.trim()
+    if (!trimmed) {
+      throw new Error('Please enter the new person name.')
+    }
+
+    const existing = profiles.find(
+      (p) => p.display_name.trim().toLowerCase() === trimmed.toLowerCase()
+    )
+    if (existing) {
+      return existing.id
+    }
+
+    const generatedId = `P-${slugify(trimmed)}-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 6)}`
+
+    const { error } = await supabase.from('profiles').insert({
+      id: generatedId,
+      display_name: trimmed,
+    })
+
+    if (error) {
+      throw new Error(`Could not create new person: ${error.message}`)
+    }
+
+    setProfiles((current) =>
+      [...current, { id: generatedId, display_name: trimmed }].sort((a, b) =>
+        a.display_name.localeCompare(b.display_name)
+      )
+    )
+
+    return generatedId
+  }
+
+  async function normalizeEntriesForSave(filledEntries: ReviewEntry[]) {
+    const resolved = []
+
+    for (const entry of filledEntries) {
+      let reviewerId = entry.reviewer_id
+
+      if (reviewerId === '__new__') {
+        reviewerId = await createPersonIfNeeded(entry.new_reviewer_name)
+      }
+
+      resolved.push({
+        reviewer_id: reviewerId,
+        rating: Number(entry.rating),
+        notes: entry.notes.trim() || null,
+      })
+    }
+
+    return resolved
+  }
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setMessage('')
@@ -196,7 +263,10 @@ export default function NewReviewPage() {
 
     const filledEntries = entries.filter(
       (entry) =>
-        entry.reviewer_id.trim() || entry.rating.trim() || entry.notes.trim()
+        entry.reviewer_id.trim() ||
+        entry.new_reviewer_name.trim() ||
+        entry.rating.trim() ||
+        entry.notes.trim()
     )
 
     if (filledEntries.length === 0) {
@@ -210,6 +280,11 @@ export default function NewReviewPage() {
         return
       }
 
+      if (entry.reviewer_id === '__new__' && !entry.new_reviewer_name.trim()) {
+        setMessage('Every "Add new person..." row needs a new person name.')
+        return
+      }
+
       const numericRating = Number(entry.rating)
       if (Number.isNaN(numericRating) || numericRating < 0 || numericRating > 10) {
         setMessage('Ratings must be between 0 and 10.')
@@ -217,29 +292,30 @@ export default function NewReviewPage() {
       }
     }
 
-    const reviewerIds = filledEntries.map((entry) => entry.reviewer_id)
-    const duplicateReviewerIds = reviewerIds.filter(
-      (id, index) => reviewerIds.indexOf(id) !== index
-    )
-
-    if (duplicateReviewerIds.length > 0) {
-      setMessage('The same reviewer appears more than once.')
-      return
-    }
-
     setLoading(true)
 
     try {
+      const normalizedEntries = await normalizeEntriesForSave(filledEntries)
+
+      const reviewerIds = normalizedEntries.map((entry) => entry.reviewer_id)
+      const duplicateReviewerIds = reviewerIds.filter(
+        (id, index) => reviewerIds.indexOf(id) !== index
+      )
+
+      if (duplicateReviewerIds.length > 0) {
+        throw new Error('The same reviewer appears more than once.')
+      }
+
       const sessionId = await getOrCreateSession(form.review_date, finalLocation)
 
-      const reviewRows = filledEntries.map((entry) => ({
+      const reviewRows = normalizedEntries.map((entry) => ({
         id: crypto.randomUUID(),
         review_date: form.review_date,
         session_id: sessionId,
         profile_id: entry.reviewer_id,
         whisky_id: form.whisky_id,
-        rating: Number(entry.rating),
-        notes: entry.notes.trim() || null,
+        rating: entry.rating,
+        notes: entry.notes,
       }))
 
       const { error: reviewError } = await supabase
@@ -391,7 +467,11 @@ export default function NewReviewPage() {
                     <select
                       value={entry.reviewer_id}
                       onChange={(e) =>
-                        updateEntry(index, { reviewer_id: e.target.value })
+                        updateEntry(index, {
+                          reviewer_id: e.target.value,
+                          new_reviewer_name:
+                            e.target.value === '__new__' ? entry.new_reviewer_name : '',
+                        })
                       }
                       style={inputStyle}
                     >
@@ -401,6 +481,7 @@ export default function NewReviewPage() {
                           {profile.display_name}
                         </option>
                       ))}
+                      <option value="__new__">Add new person...</option>
                     </select>
                   </Field>
 
@@ -419,6 +500,22 @@ export default function NewReviewPage() {
                     />
                   </Field>
                 </div>
+
+                {entry.reviewer_id === '__new__' ? (
+                  <div style={{ marginTop: 12 }}>
+                    <Field label="New Person Name">
+                      <input
+                        type="text"
+                        placeholder="Enter new person name"
+                        value={entry.new_reviewer_name}
+                        onChange={(e) =>
+                          updateEntry(index, { new_reviewer_name: e.target.value })
+                        }
+                        style={inputStyle}
+                      />
+                    </Field>
+                  </div>
+                ) : null}
 
                 <div style={{ marginTop: 12 }}>
                   <Field label="Notes">
