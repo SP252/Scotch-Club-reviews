@@ -176,44 +176,46 @@ export default async function WhiskyDetailPage({
                 </div>
               </div>
 
-              <Link
-                href={`/whiskies/upload-photo?whiskyId=${encodeURIComponent(whisky.id)}`}
-                style={{
-                  display: 'inline-block',
-                  padding: '10px 16px',
-                  border: '1px solid #1d4ed8',
-                  borderRadius: 14,
-                  textDecoration: 'none',
-                  color: '#ffffff',
-                  fontSize: 14,
-                  fontWeight: 800,
-                  background: 'linear-gradient(180deg, #3b82f6, #2563eb)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                Upload Photo
-              </Link>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <Link
+                  href={`/whiskies/${encodeURIComponent(whisky.id)}/edit`}
+                  style={{
+                    display: 'inline-block',
+                    padding: '10px 16px',
+                    border: '1px solid #0f172a',
+                    borderRadius: 14,
+                    textDecoration: 'none',
+                    color: '#0f172a',
+                    fontSize: 14,
+                    fontWeight: 800,
+                    background: '#ffffff',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Edit Bottle
+                </Link>
+
+                <Link
+                  href={`/whiskies/upload-photo?whiskyId=${encodeURIComponent(whisky.id)}`}
+                  style={{
+                    display: 'inline-block',
+                    padding: '10px 16px',
+                    border: '1px solid #1d4ed8',
+                    borderRadius: 14,
+                    textDecoration: 'none',
+                    color: '#ffffff',
+                    fontSize: 14,
+                    fontWeight: 800,
+                    background: 'linear-gradient(180deg, #3b82f6, #2563eb)',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Upload Photo
+                </Link>
+              </div>
             </div>
           </div>
 
-<Link
-  href={`/whiskies/${encodeURIComponent(whisky.id)}/edit`}
-  style={{
-    display: 'inline-block',
-    padding: '10px 16px',
-    border: '1px solid #0f172a',
-    borderRadius: 14,
-    textDecoration: 'none',
-    color: '#0f172a',
-    fontSize: 14,
-    fontWeight: 800,
-    background: '#ffffff',
-    whiteSpace: 'nowrap',
-  }}
->
-  Edit Bottle
-</Link>
-          
           <div style={{ width: 320, flexShrink: 0 }}>
             {whisky.image_url ? (
               <img
@@ -278,7 +280,27 @@ export default async function WhiskyDetailPage({
                   </div>
                 </div>
 
-                <div style={pillStyle}>{review.rating}/10</div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={pillStyle}>{review.rating}/10</div>
+
+                  <Link
+                    href={`/reviews/${encodeURIComponent(review.id)}/edit`}
+                    style={{
+                      display: 'inline-block',
+                      padding: '8px 14px',
+                      border: '1px solid #0f172a',
+                      borderRadius: 12,
+                      textDecoration: 'none',
+                      color: '#0f172a',
+                      fontSize: 14,
+                      fontWeight: 700,
+                      background: '#ffffff',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Edit Review
+                  </Link>
+                </div>
               </div>
 
               {review.notes ? (
