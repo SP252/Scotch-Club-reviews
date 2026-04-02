@@ -194,7 +194,7 @@ export default function RecentReviewsPage() {
 
   return (
     <main style={{ maxWidth: 960, margin: '0 auto', padding: 24 }}>
-      <h1 style={{ fontSize: 36, fontWeight: 800 }}>Recent Reviews</h1>
+      <h1 style={{ fontSize: 36, fontWeight: 800 }}>Thumb test</h1>
 
       <input
         type="text"
