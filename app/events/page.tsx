@@ -32,11 +32,19 @@ type Review = {
   whisky: { id: string; brand: string; name: string; category: string | null } | null
 }
 
+type BottleGroup = {
+  whiskyId: string
+  bottleName: string
+  avgRating: number
+  reviews: Review[]
+}
+
 type EventGroup = {
   id: number
   tasting_date: string
   location: string
   reviews: Review[]
+  bottles: BottleGroup[]
 }
 
 function firstOrSelf<T>(value: MaybeArray<T>): T | null {
@@ -63,6 +71,7 @@ export default function EventsPage() {
   const [events, setEvents] = useState<EventGroup[]>([])
   const [selectedYear, setSelectedYear] = useState('all')
   const [expandedEventIds, setExpandedEventIds] = useState<number[]>([])
+  const [expandedBottleKeys, setExpandedBottleKeys] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -127,22 +136,59 @@ export default function EventsPage() {
 
       const groupedEvents: EventGroup[] = ((sessionsData ?? []) as SessionRow[])
         .map((session) => {
-          const reviews = (reviewMap.get(Number(session.id)) ?? []).slice().sort((a, b) => {
+          const reviews = (reviewMap.get(Number(session.id)) ?? []).slice()
+
+          reviews.sort((a, b) => {
             const bottleCompare = bottleSortKey(a).localeCompare(bottleSortKey(b))
             if (bottleCompare !== 0) return bottleCompare
-
             if (b.rating !== a.rating) return b.rating - a.rating
-
             const reviewerA = (a.profile?.display_name ?? '').toLowerCase()
             const reviewerB = (b.profile?.display_name ?? '').toLowerCase()
             return reviewerA.localeCompare(reviewerB)
           })
+
+          const bottleMap = new Map<string, Review[]>()
+
+          for (const review of reviews) {
+            const whiskyId = review.whisky?.id
+            if (!whiskyId) continue
+            if (!bottleMap.has(whiskyId)) {
+              bottleMap.set(whiskyId, [])
+            }
+            bottleMap.get(whiskyId)!.push(review)
+          }
+
+          const bottles: BottleGroup[] = Array.from(bottleMap.entries())
+            .map(([whiskyId, bottleReviews]) => {
+              const firstReview = bottleReviews[0]
+              const brand = firstReview.whisky?.brand ?? ''
+              const name = firstReview.whisky?.name ?? ''
+              const bottleName = `${brand} ${name}`.trim() || 'Unknown bottle'
+              const avgRating =
+                bottleReviews.reduce((sum, r) => sum + Number(r.rating), 0) / bottleReviews.length
+
+              const sortedBottleReviews = bottleReviews.slice().sort((a, b) => {
+                if (b.rating !== a.rating) return b.rating - a.rating
+                const reviewerA = (a.profile?.display_name ?? '').toLowerCase()
+                const reviewerB = (b.profile?.display_name ?? '').toLowerCase()
+                return reviewerA.localeCompare(reviewerB)
+              })
+
+              return {
+                whiskyId,
+                bottleName,
+                avgRating,
+                reviews: sortedBottleReviews,
+              }
+            })
+            .sort((a, b) => a.bottleName.toLowerCase().localeCompare(b.bottleName.toLowerCase()))
 
           return {
             id: Number(session.id),
             tasting_date: session.tasting_date,
             location: session.location,
             reviews,
+            bottles,
           }
         })
         .filter((event) => event.reviews.length > 0)
@@ -179,11 +225,24 @@ export default function EventsPage() {
     )
   }
 
+  function toggleBottle(eventId: number, whiskyId: string) {
+    const key = `${eventId}::${whiskyId}`
+    setExpandedBottleKeys((current) =>
+      current.includes(key)
+        ? current.filter((item) => item !== key)
+        : [...current, key]
+    )
+  }
+
+  function isBottleExpanded(eventId: number, whiskyId: string) {
+    return expandedBottleKeys.includes(`${eventId}::${whiskyId}`)
+  }
+
   return (
     <main style={{ maxWidth: 1100, margin: '0 auto', padding: 8 }}>
       <section style={heroStyle}>
         <h1 style={heroTitle}>Events</h1>
-        <p style={heroText}>Browse tasting events and the reviews submitted at each one.</p>
+        <p style={heroText}>Browse tasting events, then drill into bottles and their reviews.</p>
 
         <div
           style={{
@@ -244,7 +303,8 @@ export default function EventsPage() {
                     </h2>
                     <div style={{ marginTop: 6, fontSize: 14, color: '#475569' }}>
                       {formatDate(event.tasting_date)} · {event.reviews.length} review
-                      {event.reviews.length === 1 ? '' : 's'}
+                      {event.reviews.length === 1 ? '' : 's'} · {event.bottles.length} bottle
+                      {event.bottles.length === 1 ? '' : 's'}
                     </div>
                   </div>
 
@@ -263,61 +323,116 @@ export default function EventsPage() {
                       onClick={() => toggleEvent(event.id)}
                       style={buttonStyle}
                     >
-                      {isExpanded ? 'Hide Reviews' : 'Show Reviews'}
+                      {isExpanded ? 'Hide Bottles' : 'Show Bottles'}
                     </button>
                   </div>
                 </div>
 
                 {isExpanded ? (
                   <div style={{ display: 'grid', gap: 12 }}>
-                    {event.reviews.map((review) => (
-                      <div key={review.id} style={innerCardStyle}>
-                        <div
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'flex-start',
-                            gap: 16,
-                            flexWrap: 'wrap',
-                          }}
-                        >
-                          <div>
-                            <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
-                              {review.whisky ? (
+                    {event.bottles.map((bottle) => {
+                      const bottleExpanded = isBottleExpanded(event.id, bottle.whiskyId)
+
+                      return (
+                        <div key={bottle.whiskyId} style={innerCardStyle}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'flex-start',
+                              gap: 16,
+                              flexWrap: 'wrap',
+                              marginBottom: bottleExpanded ? 12 : 0,
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
                                 <Link
-                                  href={`/whiskies/${encodeURIComponent(review.whisky.id)}`}
+                                  href={`/whiskies/${encodeURIComponent(bottle.whiskyId)}`}
                                   style={{ color: '#0f172a', textDecoration: 'none' }}
                                 >
-                                  {review.whisky.brand} {review.whisky.name}
+                                  {bottle.bottleName}
                                 </Link>
-                              ) : (
-                                'Unknown bottle'
-                              )}
+                              </div>
+
+                              <div style={{ fontSize: 14, color: '#475569', marginTop: 4 }}>
+                                Average: {bottle.avgRating.toFixed(2)} / 10 · {bottle.reviews.length}{' '}
+                                review{bottle.reviews.length === 1 ? '' : 's'}
+                              </div>
                             </div>
 
-                            <div style={{ fontSize: 14, color: '#475569', marginTop: 4 }}>
-                              {review.profile?.display_name ?? 'Unknown reviewer'}
+                            <div
+                              style={{
+                                display: 'flex',
+                                gap: 10,
+                                alignItems: 'center',
+                                flexWrap: 'wrap',
+                              }}
+                            >
+                              <div style={scorePillStyle}>{bottle.avgRating.toFixed(2)}</div>
+
+                              <button
+                                type="button"
+                                onClick={() => toggleBottle(event.id, bottle.whiskyId)}
+                                style={buttonStyle}
+                              >
+                                {bottleExpanded ? 'Hide Reviews' : 'Show Reviews'}
+                              </button>
                             </div>
                           </div>
 
-                          <div style={scorePillStyle}>{review.rating}/10</div>
-                        </div>
+                          {bottleExpanded ? (
+                            <div style={{ display: 'grid', gap: 10 }}>
+                              {bottle.reviews.map((review) => (
+                                <div key={review.id} style={reviewCardStyle}>
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'flex-start',
+                                      gap: 16,
+                                      flexWrap: 'wrap',
+                                    }}
+                                  >
+                                    <div>
+                                      <div
+                                        style={{
+                                          fontSize: 14,
+                                          fontWeight: 700,
+                                          color: '#0f172a',
+                                        }}
+                                      >
+                                        {review.profile?.display_name ?? 'Unknown reviewer'}
+                                      </div>
 
-                        {review.notes ? (
-                          <p
-                            style={{
-                              marginTop: 12,
-                              marginBottom: 0,
-                              fontSize: 14,
-                              lineHeight: 1.6,
-                              color: '#1e293b',
-                            }}
-                          >
-                            {review.notes}
-                          </p>
-                        ) : null}
-                      </div>
-                    ))}
+                                      <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
+                                        {review.review_date}
+                                      </div>
+                                    </div>
+
+                                    <div style={smallScorePillStyle}>{review.rating}/10</div>
+                                  </div>
+
+                                  {review.notes ? (
+                                    <p
+                                      style={{
+                                        marginTop: 10,
+                                        marginBottom: 0,
+                                        fontSize: 14,
+                                        lineHeight: 1.6,
+                                        color: '#1e293b',
+                                      }}
+                                    >
+                                      {review.notes}
+                                    </p>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      )
+                    })}
                   </div>
                 ) : null}
               </section>
@@ -378,6 +493,13 @@ const innerCardStyle: React.CSSProperties = {
   border: '1px solid #d7e2f0',
 }
 
+const reviewCardStyle: React.CSSProperties = {
+  borderRadius: 14,
+  padding: 12,
+  background: '#ffffff',
+  border: '1px solid #d7e2f0',
+}
+
 const pillStyle: React.CSSProperties = {
   border: '1px solid #93c5fd',
   borderRadius: 9999,
@@ -394,6 +516,17 @@ const scorePillStyle: React.CSSProperties = {
   borderRadius: 9999,
   padding: '8px 14px',
   fontSize: 14,
+  fontWeight: 800,
+  color: '#1d4ed8',
+  background: '#eff6ff',
+  whiteSpace: 'nowrap',
+}
+
+const smallScorePillStyle: React.CSSProperties = {
+  border: '1px solid #93c5fd',
+  borderRadius: 9999,
+  padding: '6px 12px',
+  fontSize: 13,
   fontWeight: 800,
   color: '#1d4ed8',
   background: '#eff6ff',
