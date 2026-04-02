@@ -53,6 +53,12 @@ function formatDate(date: string) {
   return date
 }
 
+function bottleSortKey(review: Review) {
+  const brand = review.whisky?.brand ?? ''
+  const name = review.whisky?.name ?? ''
+  return `${brand} ${name}`.trim().toLowerCase()
+}
+
 export default function EventsPage() {
   const [events, setEvents] = useState<EventGroup[]>([])
   const [selectedYear, setSelectedYear] = useState('all')
@@ -120,12 +126,25 @@ export default function EventsPage() {
       }
 
       const groupedEvents: EventGroup[] = ((sessionsData ?? []) as SessionRow[])
-        .map((session) => ({
-          id: Number(session.id),
-          tasting_date: session.tasting_date,
-          location: session.location,
-          reviews: reviewMap.get(Number(session.id)) ?? [],
-        }))
+        .map((session) => {
+          const reviews = (reviewMap.get(Number(session.id)) ?? []).slice().sort((a, b) => {
+            const bottleCompare = bottleSortKey(a).localeCompare(bottleSortKey(b))
+            if (bottleCompare !== 0) return bottleCompare
+
+            if (b.rating !== a.rating) return b.rating - a.rating
+
+            const reviewerA = (a.profile?.display_name ?? '').toLowerCase()
+            const reviewerB = (b.profile?.display_name ?? '').toLowerCase()
+            return reviewerA.localeCompare(reviewerB)
+          })
+
+          return {
+            id: Number(session.id),
+            tasting_date: session.tasting_date,
+            location: session.location,
+            reviews,
+          }
+        })
         .filter((event) => event.reviews.length > 0)
         .sort((a, b) => {
           if (a.tasting_date !== b.tasting_date) {
@@ -142,8 +161,9 @@ export default function EventsPage() {
   }, [])
 
   const years = useMemo(() => {
-    return Array.from(new Set(events.map((event) => yearFromDate(event.tasting_date))))
-      .sort((a, b) => Number(b) - Number(a))
+    return Array.from(new Set(events.map((event) => yearFromDate(event.tasting_date)))).sort(
+      (a, b) => Number(b) - Number(a)
+    )
   }, [events])
 
   const filteredEvents = useMemo(() => {
