@@ -97,22 +97,24 @@ export default function LeaderboardPage() {
       })
     }
 
-    return Array.from(groups.entries()).sort((a, b) => {
-      const aIndex = categoryOrder.indexOf(a[0])
-      const bIndex = categoryOrder.indexOf(b[0])
+    return Array.from(groups.entries())
+      .map(([category, items]) => [category, items.slice(0, 10)] as [string, WhiskyStat[]])
+      .sort((a, b) => {
+        const aIndex = categoryOrder.indexOf(a[0])
+        const bIndex = categoryOrder.indexOf(b[0])
 
-      if (aIndex === -1 && bIndex === -1) return a[0].localeCompare(b[0])
-      if (aIndex === -1) return 1
-      if (bIndex === -1) return -1
-      return aIndex - bIndex
-    })
+        if (aIndex === -1 && bIndex === -1) return a[0].localeCompare(b[0])
+        if (aIndex === -1) return 1
+        if (bIndex === -1) return -1
+        return aIndex - bIndex
+      })
   }, [whiskies])
 
   return (
     <main style={{ maxWidth: 1000, margin: '0 auto', padding: 8 }}>
       <section style={heroStyle}>
         <h1 style={heroTitle}>Leaderboard</h1>
-        <p style={heroText}>Top-rated bottles grouped by category.</p>
+        <p style={heroText}>Top 10 rated bottles in each category.</p>
       </section>
 
       {loading ? (
