@@ -76,6 +76,7 @@ export default function MemberRankingsPage() {
   const [selectedPersonId, setSelectedPersonId] = useState('')
   const [selectedYear, setSelectedYear] = useState('all')
   const [selectedCategory, setSelectedCategory] = useState('all')
+  const [selectedBrand, setSelectedBrand] = useState('all')
   const [mode, setMode] = useState<'top' | 'bottom'>('top')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -174,6 +175,16 @@ export default function MemberRankingsPage() {
     })
   }, [reviews])
 
+  const brands = useMemo(() => {
+    return Array.from(
+      new Set(
+        reviews
+          .map((review) => review.whisky?.brand?.trim() ?? '')
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b))
+  }, [reviews])
+
   const filteredReviews = useMemo(() => {
     let result = reviews.filter((review) => review.profile_id === selectedPersonId)
 
@@ -184,6 +195,12 @@ export default function MemberRankingsPage() {
     if (selectedCategory !== 'all') {
       result = result.filter(
         (review) => normalizeCategory(review.whisky?.category ?? null) === selectedCategory
+      )
+    }
+
+    if (selectedBrand !== 'all') {
+      result = result.filter(
+        (review) => (review.whisky?.brand?.trim() ?? '') === selectedBrand
       )
     }
 
@@ -198,7 +215,7 @@ export default function MemberRankingsPage() {
     })
 
     return result.slice(0, 10)
-  }, [reviews, selectedPersonId, selectedYear, selectedCategory, mode])
+  }, [reviews, selectedPersonId, selectedYear, selectedCategory, selectedBrand, mode])
 
   const selectedPerson = people.find((p) => p.id === selectedPersonId)
 
@@ -207,7 +224,7 @@ export default function MemberRankingsPage() {
       <section style={heroStyle}>
         <h1 style={heroTitle}>Member Rankings</h1>
         <p style={heroText}>
-          See each member&apos;s top 10 or bottom 10 reviews by year and whiskey type.
+          See each member&apos;s top 10 or bottom 10 reviews by year, whiskey type, and brand.
         </p>
 
         <div
@@ -239,6 +256,15 @@ export default function MemberRankingsPage() {
             {categories.map((category) => (
               <option key={category} value={category}>
                 {category}
+              </option>
+            ))}
+          </select>
+
+          <select value={selectedBrand} onChange={(e) => setSelectedBrand(e.target.value)} style={inputStyle}>
+            <option value="all">All Brands</option>
+            {brands.map((brand) => (
+              <option key={brand} value={brand}>
+                {brand}
               </option>
             ))}
           </select>
