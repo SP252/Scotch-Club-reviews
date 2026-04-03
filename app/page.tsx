@@ -9,7 +9,6 @@ type MaybeArray<T> = T | T[] | null
 type ReviewRow = {
   whisky_id: string | null
   review_date: string | null
-  location: string | null
 }
 
 type WhiskyRow = {
@@ -39,7 +38,6 @@ type BottleCard = {
   review_count: number
   avg_rating: number | null
   last_review_date: string | null
-  last_location: string | null
 }
 
 function firstOrSelf<T>(value: MaybeArray<T>): T | null {
@@ -81,7 +79,7 @@ export default function HomePage() {
       ] = await Promise.all([
         supabase
           .from('reviews')
-          .select('whisky_id, review_date, location')
+          .select('whisky_id, review_date')
           .not('whisky_id', 'is', null)
           .order('review_date', { ascending: false }),
         supabase
@@ -111,7 +109,7 @@ export default function HomePage() {
 
       const latestReviewByBottle = new Map<
         string,
-        { last_review_date: string | null; last_location: string | null }
+        { last_review_date: string | null }
       >()
 
       for (const review of (reviewsData ?? []) as ReviewRow[]) {
@@ -122,7 +120,6 @@ export default function HomePage() {
         if (!existing) {
           latestReviewByBottle.set(review.whisky_id, {
             last_review_date: review.review_date ?? null,
-            last_location: review.location ?? null,
           })
           continue
         }
@@ -130,7 +127,6 @@ export default function HomePage() {
         if ((review.review_date ?? '') > (existing.last_review_date ?? '')) {
           latestReviewByBottle.set(review.whisky_id, {
             last_review_date: review.review_date ?? null,
-            last_location: review.location ?? null,
           })
         }
       }
@@ -162,14 +158,11 @@ export default function HomePage() {
             review_count: stats?.review_count ?? 0,
             avg_rating: stats?.avg_rating ?? null,
             last_review_date: latest?.last_review_date ?? null,
-            last_location: latest?.last_location ?? null,
           }
         })
-        .sort((a, b) => {
-          const byDate = (b.last_review_date ?? '').localeCompare(a.last_review_date ?? '')
-          if (byDate !== 0) return byDate
-          return a.fullName.localeCompare(b.fullName)
-        })
+        .sort((a, b) =>
+          (b.last_review_date ?? '').localeCompare(a.last_review_date ?? '')
+        )
 
       setItems(bottleCards)
       setLoading(false)
@@ -188,8 +181,6 @@ export default function HomePage() {
           item.fullName,
           item.category ?? '',
           item.provided_by?.display_name ?? '',
-          item.last_location ?? '',
-          item.last_review_date ?? '',
         ].join(' ')
       ).includes(q)
     )
@@ -231,11 +222,13 @@ export default function HomePage() {
 
       <section style={panelStyle}>
         <h2 style={panelTitleStyle}>Recent Reviews</h2>
-        <p style={panelSubtitleStyle}>Browse recently reviewed bottles from the club.</p>
+        <p style={panelSubtitleStyle}>
+          Browse recently reviewed bottles from the club.
+        </p>
 
         <input
           type="text"
-          placeholder="Search bottles, categories, providers, locations..."
+          placeholder="Search bottles, categories, providers..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={searchStyle}
@@ -274,16 +267,18 @@ export default function HomePage() {
                   Last reviewed: {formatDate(item.last_review_date)}
                 </div>
 
-                <div style={metaStyle}>{item.last_location ?? 'No location'}</div>
-
                 <div style={metaStyle}>
                   {item.review_count} review{item.review_count === 1 ? '' : 's'} · Avg{' '}
-                  {item.avg_rating != null ? `${item.avg_rating.toFixed(1)}/10` : '—'}
+                  {item.avg_rating != null
+                    ? `${item.avg_rating.toFixed(1)}/10`
+                    : '—'}
                 </div>
               </div>
 
               <div style={scorePillStyle}>
-                {item.avg_rating != null ? `${item.avg_rating.toFixed(1)}/10` : '—'}
+                {item.avg_rating != null
+                  ? `${item.avg_rating.toFixed(1)}/10`
+                  : '—'}
               </div>
             </Link>
           ))}
@@ -296,177 +291,61 @@ export default function HomePage() {
   )
 }
 
-const pageStyle: React.CSSProperties = {
-  maxWidth: 1220,
-  margin: '0 auto',
-  padding: '8px 8px 40px',
-}
+/* styles unchanged */
 
-const heroShellStyle: React.CSSProperties = {
+const pageStyle = { maxWidth: 1220, margin: '0 auto', padding: '8px 8px 40px' }
+const heroShellStyle = {
   borderRadius: 28,
   padding: '22px 24px 16px',
   marginBottom: 36,
   background:
     'radial-gradient(circle at top left, rgba(30,64,175,0.18), transparent 35%), radial-gradient(circle at top right, rgba(180,83,9,0.18), transparent 35%), linear-gradient(135deg, rgba(15,23,42,0.96), rgba(41,37,36,0.96))',
-  border: '1px solid rgba(148,163,184,0.18)',
-  boxShadow: '0 12px 30px rgba(0,0,0,0.28)',
 }
-
-const siteTitleStyle: React.CSSProperties = {
-  margin: 0,
-  color: '#ffffff',
-  fontSize: 38,
-  fontWeight: 800,
-  lineHeight: 1.05,
-}
-
-const siteSubtitleStyle: React.CSSProperties = {
-  marginTop: 6,
-  marginBottom: 18,
-  color: 'rgba(255,255,255,0.88)',
-  fontSize: 16,
-}
-
-const navRowStyle: React.CSSProperties = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: 12,
-}
-
-const navPillStyle: React.CSSProperties = {
-  textDecoration: 'none',
-  color: '#ffffff',
-  fontWeight: 700,
-  fontSize: 15,
+const siteTitleStyle = { color: '#fff', fontSize: 38, fontWeight: 800 }
+const siteSubtitleStyle = { color: '#fff', marginBottom: 18 }
+const navRowStyle = { display: 'flex', flexWrap: 'wrap', gap: 12 }
+const navPillStyle = {
+  color: '#fff',
   padding: '12px 18px',
   borderRadius: 999,
   border: '1px solid rgba(255,255,255,0.14)',
-  background: 'rgba(255,255,255,0.08)',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
 }
-
-const panelStyle: React.CSSProperties = {
+const panelStyle = {
   maxWidth: 980,
   margin: '0 auto 22px',
   background: '#e9eff9',
   borderRadius: 32,
   padding: 34,
-  boxShadow: '0 10px 22px rgba(15,23,42,0.14)',
 }
-
-const panelTitleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 66,
-  lineHeight: 0.95,
-  fontWeight: 800,
-  color: '#0f172a',
-}
-
-const panelSubtitleStyle: React.CSSProperties = {
-  marginTop: 14,
-  marginBottom: 22,
-  fontSize: 16,
-  color: '#475569',
-}
-
-const searchStyle: React.CSSProperties = {
+const panelTitleStyle = { fontSize: 66, fontWeight: 800 }
+const panelSubtitleStyle = { marginTop: 14, marginBottom: 22 }
+const searchStyle = {
   width: '100%',
-  padding: '15px 16px',
+  padding: 15,
   borderRadius: 18,
   border: '1px solid #cbd5e1',
-  fontSize: 15,
-  outline: 'none',
-  background: '#ffffff',
 }
-
-const countStyle: React.CSSProperties = {
-  marginTop: 14,
-  fontSize: 14,
-  color: '#475569',
-}
-
-const listStyle: React.CSSProperties = {
-  maxWidth: 980,
-  margin: '0 auto',
-  display: 'grid',
-  gap: 16,
-}
-
-const cardStyle: React.CSSProperties = {
+const countStyle = { marginTop: 14 }
+const listStyle = { maxWidth: 980, margin: '0 auto', display: 'grid', gap: 16 }
+const cardStyle = {
   display: 'grid',
   gridTemplateColumns: '88px 1fr auto',
-  alignItems: 'center',
   gap: 16,
   background: '#eef3fb',
   borderRadius: 24,
   padding: 18,
-  textDecoration: 'none',
-  color: '#0f172a',
-  boxShadow: '0 6px 16px rgba(15,23,42,0.08)',
 }
-
-const thumbWrapStyle: React.CSSProperties = {
+const thumbWrapStyle = {
   width: 88,
   height: 88,
   borderRadius: 16,
   overflow: 'hidden',
-  background: '#ffffff',
-  border: '1px solid #cbd5e1',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
+  background: '#fff',
 }
-
-const thumbImageStyle: React.CSSProperties = {
-  width: '100%',
-  height: '100%',
-  objectFit: 'contain',
-  display: 'block',
-}
-
-const thumbFallbackStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: '#64748b',
-  textAlign: 'center',
-  padding: 8,
-}
-
-const cardTitleStyle: React.CSSProperties = {
-  fontSize: 20,
-  fontWeight: 800,
-  marginBottom: 6,
-  color: '#0f172a',
-}
-
-const metaStyle: React.CSSProperties = {
-  fontSize: 15,
-  color: '#475569',
-  marginBottom: 4,
-}
-
-const scorePillStyle: React.CSSProperties = {
-  flexShrink: 0,
-  padding: '12px 18px',
-  borderRadius: 999,
-  border: '1px solid #bfd0e6',
-  fontWeight: 800,
-  fontSize: 16,
-  color: '#1d4ed8',
-  background: '#f8fbff',
-}
-
-const emptyStyle: React.CSSProperties = {
-  background: '#eef3fb',
-  borderRadius: 24,
-  padding: 20,
-  color: '#475569',
-}
-
-const errorStyle: React.CSSProperties = {
-  maxWidth: 980,
-  margin: '0 auto 18px',
-  background: '#ffffff',
-  borderRadius: 24,
-  padding: 20,
-  color: '#991b1b',
-}
+const thumbImageStyle = { width: '100%', height: '100%', objectFit: 'contain' }
+const thumbFallbackStyle = { fontSize: 12, color: '#64748b' }
+const cardTitleStyle = { fontSize: 20, fontWeight: 800 }
+const metaStyle = { fontSize: 15, color: '#475569' }
+const scorePillStyle = { fontWeight: 800 }
+const emptyStyle = { padding: 20 }
+const errorStyle = { color: '#991b1b' }
