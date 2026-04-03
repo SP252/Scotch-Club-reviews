@@ -125,7 +125,7 @@ export default function HomePage() {
           Recent Reviews
         </h1>
         <p style={{ fontSize: 15, color: '#334155', marginTop: 10, marginBottom: 16 }}>
-          Browse recent tasting notes from the club.
+          Browse recent reviewed bottles from the club.
         </p>
 
         <input
