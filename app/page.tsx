@@ -107,10 +107,7 @@ export default function HomePage() {
         return
       }
 
-      const latestReviewByBottle = new Map<
-        string,
-        { last_review_date: string | null }
-      >()
+      const latestReviewByBottle = new Map<string, { last_review_date: string | null }>()
 
       for (const review of (reviewsData ?? []) as ReviewRow[]) {
         if (!review.whisky_id) continue
@@ -160,9 +157,11 @@ export default function HomePage() {
             last_review_date: latest?.last_review_date ?? null,
           }
         })
-        .sort((a, b) =>
-          (b.last_review_date ?? '').localeCompare(a.last_review_date ?? '')
-        )
+        .sort((a, b) => {
+          const byDate = (b.last_review_date ?? '').localeCompare(a.last_review_date ?? '')
+          if (byDate !== 0) return byDate
+          return a.fullName.localeCompare(b.fullName)
+        })
 
       setItems(bottleCards)
       setLoading(false)
@@ -177,11 +176,7 @@ export default function HomePage() {
 
     return items.filter((item) =>
       normalize(
-        [
-          item.fullName,
-          item.category ?? '',
-          item.provided_by?.display_name ?? '',
-        ].join(' ')
+        [item.fullName, item.category ?? '', item.provided_by?.display_name ?? ''].join(' ')
       ).includes(q)
     )
   }, [items, search])
@@ -222,9 +217,7 @@ export default function HomePage() {
 
       <section style={panelStyle}>
         <h2 style={panelTitleStyle}>Recent Reviews</h2>
-        <p style={panelSubtitleStyle}>
-          Browse recently reviewed bottles from the club.
-        </p>
+        <p style={panelSubtitleStyle}>Browse recently reviewed bottles from the club.</p>
 
         <input
           type="text"
@@ -250,11 +243,7 @@ export default function HomePage() {
             <Link key={item.id} href={`/whiskies/${item.id}`} style={cardStyle}>
               <div style={thumbWrapStyle}>
                 {item.image_url ? (
-                  <img
-                    src={item.image_url}
-                    alt={item.fullName}
-                    style={thumbImageStyle}
-                  />
+                  <img src={item.image_url} alt={item.fullName} style={thumbImageStyle} />
                 ) : (
                   <div style={thumbFallbackStyle}>No image</div>
                 )}
@@ -263,22 +252,16 @@ export default function HomePage() {
               <div style={{ minWidth: 0 }}>
                 <div style={cardTitleStyle}>{item.fullName}</div>
 
-                <div style={metaStyle}>
-                  Last reviewed: {formatDate(item.last_review_date)}
-                </div>
+                <div style={metaStyle}>Last reviewed: {formatDate(item.last_review_date)}</div>
 
                 <div style={metaStyle}>
                   {item.review_count} review{item.review_count === 1 ? '' : 's'} · Avg{' '}
-                  {item.avg_rating != null
-                    ? `${item.avg_rating.toFixed(1)}/10`
-                    : '—'}
+                  {item.avg_rating != null ? `${item.avg_rating.toFixed(1)}/10` : '—'}
                 </div>
               </div>
 
               <div style={scorePillStyle}>
-                {item.avg_rating != null
-                  ? `${item.avg_rating.toFixed(1)}/10`
-                  : '—'}
+                {item.avg_rating != null ? `${item.avg_rating.toFixed(1)}/10` : '—'}
               </div>
             </Link>
           ))}
@@ -291,61 +274,177 @@ export default function HomePage() {
   )
 }
 
-/* styles unchanged */
+const pageStyle: React.CSSProperties = {
+  maxWidth: 1220,
+  margin: '0 auto',
+  padding: '8px 8px 40px',
+}
 
-const pageStyle = { maxWidth: 1220, margin: '0 auto', padding: '8px 8px 40px' }
-const heroShellStyle = {
+const heroShellStyle: React.CSSProperties = {
   borderRadius: 28,
   padding: '22px 24px 16px',
   marginBottom: 36,
   background:
     'radial-gradient(circle at top left, rgba(30,64,175,0.18), transparent 35%), radial-gradient(circle at top right, rgba(180,83,9,0.18), transparent 35%), linear-gradient(135deg, rgba(15,23,42,0.96), rgba(41,37,36,0.96))',
+  border: '1px solid rgba(148,163,184,0.18)',
+  boxShadow: '0 12px 30px rgba(0,0,0,0.28)',
 }
-const siteTitleStyle = { color: '#fff', fontSize: 38, fontWeight: 800 }
-const siteSubtitleStyle = { color: '#fff', marginBottom: 18 }
-const navRowStyle = { display: 'flex', flexWrap: 'wrap', gap: 12 }
-const navPillStyle = {
-  color: '#fff',
+
+const siteTitleStyle: React.CSSProperties = {
+  margin: 0,
+  color: '#ffffff',
+  fontSize: 38,
+  fontWeight: 800,
+  lineHeight: 1.05,
+}
+
+const siteSubtitleStyle: React.CSSProperties = {
+  marginTop: 6,
+  marginBottom: 18,
+  color: 'rgba(255,255,255,0.88)',
+  fontSize: 16,
+}
+
+const navRowStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 12,
+}
+
+const navPillStyle: React.CSSProperties = {
+  textDecoration: 'none',
+  color: '#ffffff',
+  fontWeight: 700,
+  fontSize: 15,
   padding: '12px 18px',
   borderRadius: 999,
   border: '1px solid rgba(255,255,255,0.14)',
+  background: 'rgba(255,255,255,0.08)',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
 }
-const panelStyle = {
+
+const panelStyle: React.CSSProperties = {
   maxWidth: 980,
   margin: '0 auto 22px',
   background: '#e9eff9',
   borderRadius: 32,
   padding: 34,
+  boxShadow: '0 10px 22px rgba(15,23,42,0.14)',
 }
-const panelTitleStyle = { fontSize: 66, fontWeight: 800 }
-const panelSubtitleStyle = { marginTop: 14, marginBottom: 22 }
-const searchStyle = {
+
+const panelTitleStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: 66,
+  lineHeight: 0.95,
+  fontWeight: 800,
+  color: '#0f172a',
+}
+
+const panelSubtitleStyle: React.CSSProperties = {
+  marginTop: 14,
+  marginBottom: 22,
+  fontSize: 16,
+  color: '#475569',
+}
+
+const searchStyle: React.CSSProperties = {
   width: '100%',
-  padding: 15,
+  padding: '15px 16px',
   borderRadius: 18,
   border: '1px solid #cbd5e1',
+  fontSize: 15,
+  outline: 'none',
+  background: '#ffffff',
 }
-const countStyle = { marginTop: 14 }
-const listStyle = { maxWidth: 980, margin: '0 auto', display: 'grid', gap: 16 }
-const cardStyle = {
+
+const countStyle: React.CSSProperties = {
+  marginTop: 14,
+  fontSize: 14,
+  color: '#475569',
+}
+
+const listStyle: React.CSSProperties = {
+  maxWidth: 980,
+  margin: '0 auto',
+  display: 'grid',
+  gap: 16,
+}
+
+const cardStyle: React.CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '88px 1fr auto',
+  alignItems: 'center',
   gap: 16,
   background: '#eef3fb',
   borderRadius: 24,
   padding: 18,
+  textDecoration: 'none',
+  color: '#0f172a',
+  boxShadow: '0 6px 16px rgba(15,23,42,0.08)',
 }
-const thumbWrapStyle = {
+
+const thumbWrapStyle: React.CSSProperties = {
   width: 88,
   height: 88,
   borderRadius: 16,
   overflow: 'hidden',
-  background: '#fff',
+  background: '#ffffff',
+  border: '1px solid #cbd5e1',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
 }
-const thumbImageStyle = { width: '100%', height: '100%', objectFit: 'contain' }
-const thumbFallbackStyle = { fontSize: 12, color: '#64748b' }
-const cardTitleStyle = { fontSize: 20, fontWeight: 800 }
-const metaStyle = { fontSize: 15, color: '#475569' }
-const scorePillStyle = { fontWeight: 800 }
-const emptyStyle = { padding: 20 }
-const errorStyle = { color: '#991b1b' }
+
+const thumbImageStyle: React.CSSProperties = {
+  width: '100%',
+  height: '100%',
+  objectFit: 'contain',
+  display: 'block',
+}
+
+const thumbFallbackStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: '#64748b',
+  textAlign: 'center',
+  padding: 8,
+}
+
+const cardTitleStyle: React.CSSProperties = {
+  fontSize: 20,
+  fontWeight: 800,
+  marginBottom: 6,
+  color: '#0f172a',
+}
+
+const metaStyle: React.CSSProperties = {
+  fontSize: 15,
+  color: '#475569',
+  marginBottom: 4,
+}
+
+const scorePillStyle: React.CSSProperties = {
+  flexShrink: 0,
+  padding: '12px 18px',
+  borderRadius: 999,
+  border: '1px solid #bfd0e6',
+  fontWeight: 800,
+  fontSize: 16,
+  color: '#1d4ed8',
+  background: '#f8fbff',
+}
+
+const emptyStyle: React.CSSProperties = {
+  background: '#eef3fb',
+  borderRadius: 24,
+  padding: 20,
+  color: '#475569',
+}
+
+const errorStyle: React.CSSProperties = {
+  maxWidth: 980,
+  margin: '0 auto 18px',
+  background: '#ffffff',
+  borderRadius: 24,
+  padding: 20,
+  color: '#991b1b',
+}
