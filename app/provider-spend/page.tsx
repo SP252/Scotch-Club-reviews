@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
 
 type MaybeArray<T> = T | T[] | null
@@ -19,10 +20,18 @@ type Whisky = {
   id: string
   brand: string
   name: string
+  fullName: string
   cost: number
   date_added: string | null
   provided_by_profile_id: string | null
   provided_by_name: string
+}
+
+type ProviderBottle = {
+  id: string
+  fullName: string
+  cost: number
+  date_added: string | null
 }
 
 type SpendRow = {
@@ -31,6 +40,7 @@ type SpendRow = {
   year: string
   bottleCount: number
   totalSpend: number
+  bottles: ProviderBottle[]
 }
 
 function firstOrSelf<T>(value: MaybeArray<T>): T | null {
@@ -47,9 +57,22 @@ function currency(value: number) {
   return `$${value.toFixed(2)}`
 }
 
+function formatDate(value: string | null) {
+  if (!value) return 'Unknown date'
+  const date = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(date.getTime())) return value
+
+  return date.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
 export default function ProviderSpendPage() {
   const [whiskies, setWhiskies] = useState<Whisky[]>([])
   const [selectedYear, setSelectedYear] = useState('all')
+  const [expandedKeys, setExpandedKeys] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -81,6 +104,7 @@ export default function ProviderSpendPage() {
         id: row.id,
         brand: row.brand,
         name: row.name,
+        fullName: `${row.brand} ${row.name}`,
         cost: row.cost != null ? Number(row.cost) : 0,
         date_added: row.date_added,
         provided_by_profile_id: row.provided_by_profile_id,
@@ -128,24 +152,40 @@ export default function ProviderSpendPage() {
           year,
           bottleCount: 0,
           totalSpend: 0,
+          bottles: [],
         })
       }
 
       const row = map.get(key)!
       row.bottleCount += 1
       row.totalSpend += whisky.cost
+      row.bottles.push({
+        id: whisky.id,
+        fullName: whisky.fullName,
+        cost: whisky.cost,
+        date_added: whisky.date_added,
+      })
     }
 
-    return Array.from(map.values()).sort((a, b) => {
-      if (selectedYear === 'all' && a.year !== b.year) {
-        if (a.year === 'Unknown') return 1
-        if (b.year === 'Unknown') return -1
-        return Number(b.year) - Number(a.year)
-      }
+    return Array.from(map.values())
+      .map((row) => ({
+        ...row,
+        bottles: [...row.bottles].sort((a, b) => {
+          const byDate = (b.date_added ?? '').localeCompare(a.date_added ?? '')
+          if (byDate !== 0) return byDate
+          return a.fullName.localeCompare(b.fullName)
+        }),
+      }))
+      .sort((a, b) => {
+        if (selectedYear === 'all' && a.year !== b.year) {
+          if (a.year === 'Unknown') return 1
+          if (b.year === 'Unknown') return -1
+          return Number(b.year) - Number(a.year)
+        }
 
-      if (b.totalSpend !== a.totalSpend) return b.totalSpend - a.totalSpend
-      return a.providerName.localeCompare(b.providerName)
-    })
+        if (b.totalSpend !== a.totalSpend) return b.totalSpend - a.totalSpend
+        return a.providerName.localeCompare(b.providerName)
+      })
   }, [whiskies, selectedYear])
 
   const overallTotal = useMemo(
@@ -177,11 +217,21 @@ export default function ProviderSpendPage() {
     })
   }, [spendRows, selectedYear])
 
+  function toggleRow(key: string) {
+    setExpandedKeys((current) => ({
+      ...current,
+      [key]: !current[key],
+    }))
+  }
+
   return (
     <main style={{ maxWidth: 1000, margin: '0 auto', padding: 8 }}>
       <section style={heroStyle}>
         <h1 style={heroTitle}>Provider Spend</h1>
-        <p style={heroText}>Total bottle spend by provider, broken out by year.</p>
+        <p style={heroText}>
+          Total bottle spend by provider, broken out by year. Expand a provider to
+          see which bottles they brought.
+        </p>
 
         <div
           style={{
@@ -236,30 +286,67 @@ export default function ProviderSpendPage() {
               </h2>
 
               <div style={{ display: 'grid', gap: 12 }}>
-                {rows.map((row, index) => (
-                  <div key={`${row.providerId}-${row.year}`} style={cardStyle}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 16,
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>
-                          #{index + 1} · {row.providerName}
-                        </div>
-                        <div style={{ fontSize: 14, color: '#475569' }}>
-                          {row.bottleCount} bottle{row.bottleCount === 1 ? '' : 's'} · Year: {row.year}
-                        </div>
-                      </div>
+                {rows.map((row, index) => {
+                  const rowKey = `${row.providerId}-${row.year}`
+                  const isExpanded = !!expandedKeys[rowKey]
 
-                      <div style={pillStyle}>{currency(row.totalSpend)}</div>
+                  return (
+                    <div key={rowKey} style={cardStyle}>
+                      <button
+                        type="button"
+                        onClick={() => toggleRow(rowKey)}
+                        style={rowButtonStyle}
+                      >
+                        <div>
+                          <div
+                            style={{
+                              fontSize: 18,
+                              fontWeight: 800,
+                              color: '#0f172a',
+                              marginBottom: 4,
+                            }}
+                          >
+                            #{index + 1} · {row.providerName}
+                          </div>
+                          <div style={{ fontSize: 14, color: '#475569' }}>
+                            {row.bottleCount} bottle{row.bottleCount === 1 ? '' : 's'} · Year:{' '}
+                            {row.year}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={pillStyle}>{currency(row.totalSpend)}</div>
+                          <div style={expandPillStyle}>{isExpanded ? 'Hide' : 'Show'}</div>
+                        </div>
+                      </button>
+
+                      {isExpanded ? (
+                        <div style={detailsWrapStyle}>
+                          <div style={detailsTitleStyle}>Bottles provided</div>
+
+                          <div style={{ display: 'grid', gap: 10 }}>
+                            {row.bottles.map((bottle) => (
+                              <Link
+                                key={bottle.id}
+                                href={`/whiskies/${bottle.id}`}
+                                style={bottleCardStyle}
+                              >
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={bottleTitleStyle}>{bottle.fullName}</div>
+                                  <div style={bottleMetaStyle}>
+                                    Added: {formatDate(bottle.date_added)}
+                                  </div>
+                                </div>
+
+                                <div style={bottleCostStyle}>{currency(bottle.cost)}</div>
+                              </Link>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </section>
           ))}
@@ -319,6 +406,20 @@ const cardStyle: React.CSSProperties = {
   boxShadow: '0 12px 26px rgba(0,0,0,0.18)',
 }
 
+const rowButtonStyle: React.CSSProperties = {
+  width: '100%',
+  border: 0,
+  background: 'transparent',
+  padding: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 16,
+  flexWrap: 'wrap',
+  cursor: 'pointer',
+  textAlign: 'left',
+}
+
 const pillStyle: React.CSSProperties = {
   border: '1px solid #93c5fd',
   borderRadius: 9999,
@@ -327,5 +428,63 @@ const pillStyle: React.CSSProperties = {
   fontWeight: 800,
   color: '#1d4ed8',
   background: '#eff6ff',
+  whiteSpace: 'nowrap',
+}
+
+const expandPillStyle: React.CSSProperties = {
+  border: '1px solid #cbd5e1',
+  borderRadius: 9999,
+  padding: '8px 12px',
+  fontSize: 13,
+  fontWeight: 700,
+  color: '#334155',
+  background: '#ffffff',
+  whiteSpace: 'nowrap',
+}
+
+const detailsWrapStyle: React.CSSProperties = {
+  marginTop: 16,
+  paddingTop: 16,
+  borderTop: '1px solid #cbd5e1',
+}
+
+const detailsTitleStyle: React.CSSProperties = {
+  fontSize: 14,
+  fontWeight: 800,
+  color: '#334155',
+  marginBottom: 10,
+  textTransform: 'uppercase',
+  letterSpacing: 0.4,
+}
+
+const bottleCardStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 14,
+  padding: 14,
+  borderRadius: 16,
+  background: '#ffffff',
+  border: '1px solid #d7e2f0',
+  textDecoration: 'none',
+  boxShadow: '0 6px 14px rgba(15,23,42,0.06)',
+}
+
+const bottleTitleStyle: React.CSSProperties = {
+  fontSize: 16,
+  fontWeight: 700,
+  color: '#0f172a',
+  marginBottom: 4,
+}
+
+const bottleMetaStyle: React.CSSProperties = {
+  fontSize: 13,
+  color: '#64748b',
+}
+
+const bottleCostStyle: React.CSSProperties = {
+  fontSize: 15,
+  fontWeight: 800,
+  color: '#1d4ed8',
   whiteSpace: 'nowrap',
 }
