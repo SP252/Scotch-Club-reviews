@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 
@@ -183,38 +182,6 @@ export default function HomePage() {
 
   return (
     <main style={pageStyle}>
-      <section style={heroShellStyle}>
-        <h1 style={siteTitleStyle}>Scotch Club</h1>
-        <p style={siteSubtitleStyle}>Private whiskey reviews for the club</p>
-
-        <div style={navRowStyle}>
-          <Link href="/" style={navPillStyle}>
-            Recent Reviews
-          </Link>
-          <Link href="/whiskies" style={navPillStyle}>
-            Whiskies
-          </Link>
-          <Link href="/whiskies/new" style={navPillStyle}>
-            Add Bottle
-          </Link>
-          <Link href="/leaderboard" style={navPillStyle}>
-            Leaderboard
-          </Link>
-          <Link href="/events" style={navPillStyle}>
-            Events
-          </Link>
-          <Link href="/member-rankings" style={navPillStyle}>
-            Member Rankings
-          </Link>
-          <Link href="/provider-spend" style={navPillStyle}>
-            Provider Spend
-          </Link>
-          <Link href="/reviews/new" style={navPillStyle}>
-            Add Review
-          </Link>
-        </div>
-      </section>
-
       <section style={panelStyle}>
         <h2 style={panelTitleStyle}>Recent Reviews</h2>
         <p style={panelSubtitleStyle}>Browse recently reviewed bottles from the club.</p>
@@ -240,7 +207,7 @@ export default function HomePage() {
         {!loading &&
           !error &&
           filteredItems.map((item) => (
-            <Link key={item.id} href={`/whiskies/${item.id}`} style={cardStyle}>
+            <a key={item.id} href={`/whiskies/${item.id}`} style={cardStyle}>
               <div style={thumbWrapStyle}>
                 {item.image_url ? (
                   <img src={item.image_url} alt={item.fullName} style={thumbImageStyle} />
@@ -263,7 +230,7 @@ export default function HomePage() {
               <div style={scorePillStyle}>
                 {item.avg_rating != null ? `${item.avg_rating.toFixed(1)}/10` : '—'}
               </div>
-            </Link>
+            </a>
           ))}
 
         {!loading && !error && filteredItems.length === 0 ? (
@@ -278,49 +245,6 @@ const pageStyle: React.CSSProperties = {
   maxWidth: 1220,
   margin: '0 auto',
   padding: '8px 8px 40px',
-}
-
-const heroShellStyle: React.CSSProperties = {
-  borderRadius: 28,
-  padding: '22px 24px 16px',
-  marginBottom: 36,
-  background:
-    'radial-gradient(circle at top left, rgba(30,64,175,0.18), transparent 35%), radial-gradient(circle at top right, rgba(180,83,9,0.18), transparent 35%), linear-gradient(135deg, rgba(15,23,42,0.96), rgba(41,37,36,0.96))',
-  border: '1px solid rgba(148,163,184,0.18)',
-  boxShadow: '0 12px 30px rgba(0,0,0,0.28)',
-}
-
-const siteTitleStyle: React.CSSProperties = {
-  margin: 0,
-  color: '#ffffff',
-  fontSize: 38,
-  fontWeight: 800,
-  lineHeight: 1.05,
-}
-
-const siteSubtitleStyle: React.CSSProperties = {
-  marginTop: 6,
-  marginBottom: 18,
-  color: 'rgba(255,255,255,0.88)',
-  fontSize: 16,
-}
-
-const navRowStyle: React.CSSProperties = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: 12,
-}
-
-const navPillStyle: React.CSSProperties = {
-  textDecoration: 'none',
-  color: '#ffffff',
-  fontWeight: 700,
-  fontSize: 15,
-  padding: '12px 18px',
-  borderRadius: 999,
-  border: '1px solid rgba(255,255,255,0.14)',
-  background: 'rgba(255,255,255,0.08)',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
 }
 
 const panelStyle: React.CSSProperties = {
