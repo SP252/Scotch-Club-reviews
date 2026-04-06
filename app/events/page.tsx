@@ -58,7 +58,15 @@ function yearFromDate(date: string | null | undefined) {
 }
 
 function formatDate(date: string) {
-  return date
+  if (!date) return 'Unknown date'
+  const parsed = new Date(`${date}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return date
+
+  return parsed.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
 }
 
 function bottleSortKey(review: Review) {
@@ -191,7 +199,6 @@ export default function EventsPage() {
             bottles,
           }
         })
-        .filter((event) => event.reviews.length > 0)
         .sort((a, b) => {
           if (a.tasting_date !== b.tasting_date) {
             return b.tasting_date.localeCompare(a.tasting_date)
@@ -208,7 +215,11 @@ export default function EventsPage() {
 
   const years = useMemo(() => {
     return Array.from(new Set(events.map((event) => yearFromDate(event.tasting_date)))).sort(
-      (a, b) => Number(b) - Number(a)
+      (a, b) => {
+        if (a === 'Unknown') return 1
+        if (b === 'Unknown') return -1
+        return Number(b) - Number(a)
+      }
     )
   }, [events])
 
@@ -329,111 +340,115 @@ export default function EventsPage() {
                 </div>
 
                 {isExpanded ? (
-                  <div style={{ display: 'grid', gap: 12 }}>
-                    {event.bottles.map((bottle) => {
-                      const bottleExpanded = isBottleExpanded(event.id, bottle.whiskyId)
+                  event.bottles.length > 0 ? (
+                    <div style={{ display: 'grid', gap: 12 }}>
+                      {event.bottles.map((bottle) => {
+                        const bottleExpanded = isBottleExpanded(event.id, bottle.whiskyId)
 
-                      return (
-                        <div key={bottle.whiskyId} style={innerCardStyle}>
-                          <div
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'flex-start',
-                              gap: 16,
-                              flexWrap: 'wrap',
-                              marginBottom: bottleExpanded ? 12 : 0,
-                            }}
-                          >
-                            <div>
-                              <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
-                                <Link
-                                  href={`/whiskies/${encodeURIComponent(bottle.whiskyId)}`}
-                                  style={{ color: '#0f172a', textDecoration: 'none' }}
-                                >
-                                  {bottle.bottleName}
-                                </Link>
-                              </div>
-
-                              <div style={{ fontSize: 14, color: '#475569', marginTop: 4 }}>
-                                Average: {bottle.avgRating.toFixed(2)} / 10 · {bottle.reviews.length}{' '}
-                                review{bottle.reviews.length === 1 ? '' : 's'}
-                              </div>
-                            </div>
-
+                        return (
+                          <div key={bottle.whiskyId} style={innerCardStyle}>
                             <div
                               style={{
                                 display: 'flex',
-                                gap: 10,
-                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                alignItems: 'flex-start',
+                                gap: 16,
                                 flexWrap: 'wrap',
+                                marginBottom: bottleExpanded ? 12 : 0,
                               }}
                             >
-                              <div style={scorePillStyle}>{bottle.avgRating.toFixed(2)}</div>
-
-                              <button
-                                type="button"
-                                onClick={() => toggleBottle(event.id, bottle.whiskyId)}
-                                style={buttonStyle}
-                              >
-                                {bottleExpanded ? 'Hide Reviews' : 'Show Reviews'}
-                              </button>
-                            </div>
-                          </div>
-
-                          {bottleExpanded ? (
-                            <div style={{ display: 'grid', gap: 10 }}>
-                              {bottle.reviews.map((review) => (
-                                <div key={review.id} style={reviewCardStyle}>
-                                  <div
-                                    style={{
-                                      display: 'flex',
-                                      justifyContent: 'space-between',
-                                      alignItems: 'flex-start',
-                                      gap: 16,
-                                      flexWrap: 'wrap',
-                                    }}
+                              <div>
+                                <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a' }}>
+                                  <Link
+                                    href={`/whiskies/${encodeURIComponent(bottle.whiskyId)}`}
+                                    style={{ color: '#0f172a', textDecoration: 'none' }}
                                   >
-                                    <div>
-                                      <div
-                                        style={{
-                                          fontSize: 14,
-                                          fontWeight: 700,
-                                          color: '#0f172a',
-                                        }}
-                                      >
-                                        {review.profile?.display_name ?? 'Unknown reviewer'}
-                                      </div>
+                                    {bottle.bottleName}
+                                  </Link>
+                                </div>
 
-                                      <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
-                                        {review.review_date}
-                                      </div>
-                                    </div>
+                                <div style={{ fontSize: 14, color: '#475569', marginTop: 4 }}>
+                                  Average: {bottle.avgRating.toFixed(2)} / 10 · {bottle.reviews.length}{' '}
+                                  review{bottle.reviews.length === 1 ? '' : 's'}
+                                </div>
+                              </div>
 
-                                    <div style={smallScorePillStyle}>{review.rating}/10</div>
-                                  </div>
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  gap: 10,
+                                  alignItems: 'center',
+                                  flexWrap: 'wrap',
+                                }}
+                              >
+                                <div style={scorePillStyle}>{bottle.avgRating.toFixed(2)}</div>
 
-                                  {review.notes ? (
-                                    <p
+                                <button
+                                  type="button"
+                                  onClick={() => toggleBottle(event.id, bottle.whiskyId)}
+                                  style={buttonStyle}
+                                >
+                                  {bottleExpanded ? 'Hide Reviews' : 'Show Reviews'}
+                                </button>
+                              </div>
+                            </div>
+
+                            {bottleExpanded ? (
+                              <div style={{ display: 'grid', gap: 10 }}>
+                                {bottle.reviews.map((review) => (
+                                  <div key={review.id} style={reviewCardStyle}>
+                                    <div
                                       style={{
-                                        marginTop: 10,
-                                        marginBottom: 0,
-                                        fontSize: 14,
-                                        lineHeight: 1.6,
-                                        color: '#1e293b',
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'flex-start',
+                                        gap: 16,
+                                        flexWrap: 'wrap',
                                       }}
                                     >
-                                      {review.notes}
-                                    </p>
-                                  ) : null}
-                                </div>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      )
-                    })}
-                  </div>
+                                      <div>
+                                        <div
+                                          style={{
+                                            fontSize: 14,
+                                            fontWeight: 700,
+                                            color: '#0f172a',
+                                          }}
+                                        >
+                                          {review.profile?.display_name ?? 'Unknown reviewer'}
+                                        </div>
+
+                                        <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
+                                          {formatDate(review.review_date)}
+                                        </div>
+                                      </div>
+
+                                      <div style={smallScorePillStyle}>{review.rating}/10</div>
+                                    </div>
+
+                                    {review.notes ? (
+                                      <p
+                                        style={{
+                                          marginTop: 10,
+                                          marginBottom: 0,
+                                          fontSize: 14,
+                                          lineHeight: 1.6,
+                                          color: '#1e293b',
+                                        }}
+                                      >
+                                        {review.notes}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div style={innerCardStyle}>No bottles or reviews linked to this event yet.</div>
+                  )
                 ) : null}
               </section>
             )
