@@ -75,6 +75,45 @@ function bottleSortKey(review: Review) {
   return `${brand} ${name}`.trim().toLowerCase()
 }
 
+async function fetchAllReviews(): Promise<ReviewRow[]> {
+  const pageSize = 1000
+  let from = 0
+  let done = false
+  const allRows: ReviewRow[] = []
+
+  while (!done) {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select(`
+        id,
+        review_date,
+        rating,
+        notes,
+        session_id,
+        profile:profiles(display_name),
+        whisky:whiskies(id, brand, name, category)
+      `)
+      .not('review_date', 'is', null)
+      .order('review_date', { ascending: false })
+      .range(from, from + pageSize - 1)
+
+    if (error) {
+      throw error
+    }
+
+    const rows = (data ?? []) as ReviewRow[]
+    allRows.push(...rows)
+
+    if (rows.length < pageSize) {
+      done = true
+    } else {
+      from += pageSize
+    }
+  }
+
+  return allRows
+}
+
 export default function EventsPage() {
   const [events, setEvents] = useState<EventGroup[]>([])
   const [selectedYear, setSelectedYear] = useState('all')
@@ -88,135 +127,122 @@ export default function EventsPage() {
       setLoading(true)
       setError('')
 
-      const [
-        { data: sessionsData, error: sessionsError },
-        { data: reviewsData, error: reviewsError },
-      ] = await Promise.all([
-        supabase
-          .from('tasting_sessions')
-          .select('id, tasting_date, location')
-          .order('tasting_date', { ascending: false }),
-        supabase
-          .from('reviews')
-          .select(`
-            id,
-            review_date,
-            rating,
-            notes,
-            session_id,
-            profile:profiles(display_name),
-            whisky:whiskies(id, brand, name, category)
-          `)
-          .not('review_date', 'is', null)
-          .order('review_date', { ascending: false }),
-      ])
+      try {
+        const [
+          { data: sessionsData, error: sessionsError },
+          reviewsData,
+        ] = await Promise.all([
+          supabase
+            .from('tasting_sessions')
+            .select('id, tasting_date, location')
+            .order('tasting_date', { ascending: false }),
+          fetchAllReviews(),
+        ])
 
-      if (sessionsError) {
-        setError(sessionsError.message)
-        setLoading(false)
-        return
-      }
-
-      if (reviewsError) {
-        setError(reviewsError.message)
-        setLoading(false)
-        return
-      }
-
-      const normalizedReviews: Review[] = ((reviewsData ?? []) as ReviewRow[]).map((review) => ({
-        id: review.id,
-        review_date: review.review_date,
-        rating: Number(review.rating),
-        notes: review.notes,
-        session_id: review.session_id,
-        profile: firstOrSelf(review.profile),
-        whisky: firstOrSelf(review.whisky),
-      }))
-
-      const sessionByDate = new Map<string, SessionRow>()
-
-      for (const session of (sessionsData ?? []) as SessionRow[]) {
-        if (!sessionByDate.has(session.tasting_date)) {
-          sessionByDate.set(session.tasting_date, session)
-        }
-      }
-
-      const reviewMapByDate = new Map<string, Review[]>()
-
-      for (const review of normalizedReviews) {
-        const date = review.review_date
-        if (!date) continue
-
-        if (!reviewMapByDate.has(date)) {
-          reviewMapByDate.set(date, [])
+        if (sessionsError) {
+          setError(sessionsError.message)
+          setLoading(false)
+          return
         }
 
-        reviewMapByDate.get(date)!.push(review)
-      }
+        const normalizedReviews: Review[] = reviewsData.map((review) => ({
+          id: review.id,
+          review_date: review.review_date,
+          rating: Number(review.rating),
+          notes: review.notes,
+          session_id: review.session_id,
+          profile: firstOrSelf(review.profile),
+          whisky: firstOrSelf(review.whisky),
+        }))
 
-      const groupedEvents: EventGroup[] = Array.from(reviewMapByDate.entries())
-        .map(([date, reviews]) => {
-          const session = sessionByDate.get(date)
+        const sessionByDate = new Map<string, SessionRow>()
 
-          const sortedReviews = reviews.slice().sort((a, b) => {
-            const bottleCompare = bottleSortKey(a).localeCompare(bottleSortKey(b))
-            if (bottleCompare !== 0) return bottleCompare
-            if (b.rating !== a.rating) return b.rating - a.rating
-            const reviewerA = (a.profile?.display_name ?? '').toLowerCase()
-            const reviewerB = (b.profile?.display_name ?? '').toLowerCase()
-            return reviewerA.localeCompare(reviewerB)
-          })
+        for (const session of (sessionsData ?? []) as SessionRow[]) {
+          if (!sessionByDate.has(session.tasting_date)) {
+            sessionByDate.set(session.tasting_date, session)
+          }
+        }
 
-          const bottleMap = new Map<string, Review[]>()
+        const reviewMapByDate = new Map<string, Review[]>()
 
-          for (const review of sortedReviews) {
-            const whiskyId = review.whisky?.id
-            if (!whiskyId) continue
+        for (const review of normalizedReviews) {
+          const date = review.review_date
+          if (!date) continue
 
-            if (!bottleMap.has(whiskyId)) {
-              bottleMap.set(whiskyId, [])
+          if (!reviewMapByDate.has(date)) {
+            reviewMapByDate.set(date, [])
+          }
+
+          reviewMapByDate.get(date)!.push(review)
+        }
+
+        const groupedEvents: EventGroup[] = Array.from(reviewMapByDate.entries())
+          .map(([date, reviews]) => {
+            const session = sessionByDate.get(date)
+
+            const sortedReviews = reviews.slice().sort((a, b) => {
+              const bottleCompare = bottleSortKey(a).localeCompare(bottleSortKey(b))
+              if (bottleCompare !== 0) return bottleCompare
+              if (b.rating !== a.rating) return b.rating - a.rating
+              const reviewerA = (a.profile?.display_name ?? '').toLowerCase()
+              const reviewerB = (b.profile?.display_name ?? '').toLowerCase()
+              return reviewerA.localeCompare(reviewerB)
+            })
+
+            const bottleMap = new Map<string, Review[]>()
+
+            for (const review of sortedReviews) {
+              const whiskyId = review.whisky?.id
+              if (!whiskyId) continue
+
+              if (!bottleMap.has(whiskyId)) {
+                bottleMap.set(whiskyId, [])
+              }
+
+              bottleMap.get(whiskyId)!.push(review)
             }
 
-            bottleMap.get(whiskyId)!.push(review)
-          }
+            const bottles: BottleGroup[] = Array.from(bottleMap.entries())
+              .map(([whiskyId, bottleReviews]) => {
+                const firstReview = bottleReviews[0]
+                const brand = firstReview.whisky?.brand ?? ''
+                const name = firstReview.whisky?.name ?? ''
+                const bottleName = `${brand} ${name}`.trim() || 'Unknown bottle'
+                const avgRating =
+                  bottleReviews.reduce((sum, r) => sum + Number(r.rating), 0) / bottleReviews.length
 
-          const bottles: BottleGroup[] = Array.from(bottleMap.entries())
-            .map(([whiskyId, bottleReviews]) => {
-              const firstReview = bottleReviews[0]
-              const brand = firstReview.whisky?.brand ?? ''
-              const name = firstReview.whisky?.name ?? ''
-              const bottleName = `${brand} ${name}`.trim() || 'Unknown bottle'
-              const avgRating =
-                bottleReviews.reduce((sum, r) => sum + Number(r.rating), 0) / bottleReviews.length
+                const sortedBottleReviews = bottleReviews.slice().sort((a, b) => {
+                  if (b.rating !== a.rating) return b.rating - a.rating
+                  const reviewerA = (a.profile?.display_name ?? '').toLowerCase()
+                  const reviewerB = (b.profile?.display_name ?? '').toLowerCase()
+                  return reviewerA.localeCompare(reviewerB)
+                })
 
-              const sortedBottleReviews = bottleReviews.slice().sort((a, b) => {
-                if (b.rating !== a.rating) return b.rating - a.rating
-                const reviewerA = (a.profile?.display_name ?? '').toLowerCase()
-                const reviewerB = (b.profile?.display_name ?? '').toLowerCase()
-                return reviewerA.localeCompare(reviewerB)
+                return {
+                  whiskyId,
+                  bottleName,
+                  avgRating,
+                  reviews: sortedBottleReviews,
+                }
               })
+              .sort((a, b) => a.bottleName.toLowerCase().localeCompare(b.bottleName.toLowerCase()))
 
-              return {
-                whiskyId,
-                bottleName,
-                avgRating,
-                reviews: sortedBottleReviews,
-              }
-            })
-            .sort((a, b) => a.bottleName.toLowerCase().localeCompare(b.bottleName.toLowerCase()))
+            return {
+              id: date,
+              tasting_date: date,
+              location: session?.location ?? 'Unknown location',
+              reviews: sortedReviews,
+              bottles,
+            }
+          })
+          .sort((a, b) => b.tasting_date.localeCompare(a.tasting_date))
 
-          return {
-            id: date,
-            tasting_date: date,
-            location: session?.location ?? 'Unknown location',
-            reviews: sortedReviews,
-            bottles,
-          }
-        })
-        .sort((a, b) => b.tasting_date.localeCompare(a.tasting_date))
-
-      setEvents(groupedEvents)
-      setLoading(false)
+        setEvents(groupedEvents)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Error loading events')
+      } finally {
+        setLoading(false)
+      }
     }
 
     loadEvents()
