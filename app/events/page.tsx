@@ -40,7 +40,7 @@ type BottleGroup = {
 }
 
 type EventGroup = {
-  id: number
+  id: string
   tasting_date: string
   location: string
   reviews: Review[]
@@ -78,7 +78,7 @@ function bottleSortKey(review: Review) {
 export default function EventsPage() {
   const [events, setEvents] = useState<EventGroup[]>([])
   const [selectedYear, setSelectedYear] = useState('all')
-  const [expandedEventIds, setExpandedEventIds] = useState<number[]>([])
+  const [expandedEventIds, setExpandedEventIds] = useState<string[]>([])
   const [expandedBottleKeys, setExpandedBottleKeys] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -107,6 +107,7 @@ export default function EventsPage() {
             profile:profiles(display_name),
             whisky:whiskies(id, brand, name, category)
           `)
+          .not('review_date', 'is', null)
           .order('review_date', { ascending: false }),
       ])
 
@@ -132,21 +133,32 @@ export default function EventsPage() {
         whisky: firstOrSelf(review.whisky),
       }))
 
-      const reviewMap = new Map<number, Review[]>()
+      const sessionByDate = new Map<string, SessionRow>()
 
-      for (const review of normalizedReviews) {
-        if (review.session_id == null) continue
-        if (!reviewMap.has(review.session_id)) {
-          reviewMap.set(review.session_id, [])
+      for (const session of (sessionsData ?? []) as SessionRow[]) {
+        if (!sessionByDate.has(session.tasting_date)) {
+          sessionByDate.set(session.tasting_date, session)
         }
-        reviewMap.get(review.session_id)!.push(review)
       }
 
-      const groupedEvents: EventGroup[] = ((sessionsData ?? []) as SessionRow[])
-        .map((session) => {
-          const reviews = (reviewMap.get(Number(session.id)) ?? []).slice()
+      const reviewMapByDate = new Map<string, Review[]>()
 
-          reviews.sort((a, b) => {
+      for (const review of normalizedReviews) {
+        const date = review.review_date
+        if (!date) continue
+
+        if (!reviewMapByDate.has(date)) {
+          reviewMapByDate.set(date, [])
+        }
+
+        reviewMapByDate.get(date)!.push(review)
+      }
+
+      const groupedEvents: EventGroup[] = Array.from(reviewMapByDate.entries())
+        .map(([date, reviews]) => {
+          const session = sessionByDate.get(date)
+
+          const sortedReviews = reviews.slice().sort((a, b) => {
             const bottleCompare = bottleSortKey(a).localeCompare(bottleSortKey(b))
             if (bottleCompare !== 0) return bottleCompare
             if (b.rating !== a.rating) return b.rating - a.rating
@@ -157,12 +169,14 @@ export default function EventsPage() {
 
           const bottleMap = new Map<string, Review[]>()
 
-          for (const review of reviews) {
+          for (const review of sortedReviews) {
             const whiskyId = review.whisky?.id
             if (!whiskyId) continue
+
             if (!bottleMap.has(whiskyId)) {
               bottleMap.set(whiskyId, [])
             }
+
             bottleMap.get(whiskyId)!.push(review)
           }
 
@@ -192,19 +206,14 @@ export default function EventsPage() {
             .sort((a, b) => a.bottleName.toLowerCase().localeCompare(b.bottleName.toLowerCase()))
 
           return {
-            id: Number(session.id),
-            tasting_date: session.tasting_date,
-            location: session.location,
-            reviews,
+            id: date,
+            tasting_date: date,
+            location: session?.location ?? 'Unknown location',
+            reviews: sortedReviews,
             bottles,
           }
         })
-        .sort((a, b) => {
-          if (a.tasting_date !== b.tasting_date) {
-            return b.tasting_date.localeCompare(a.tasting_date)
-          }
-          return a.location.localeCompare(b.location)
-        })
+        .sort((a, b) => b.tasting_date.localeCompare(a.tasting_date))
 
       setEvents(groupedEvents)
       setLoading(false)
@@ -228,7 +237,7 @@ export default function EventsPage() {
     return events.filter((event) => yearFromDate(event.tasting_date) === selectedYear)
   }, [events, selectedYear])
 
-  function toggleEvent(eventId: number) {
+  function toggleEvent(eventId: string) {
     setExpandedEventIds((current) =>
       current.includes(eventId)
         ? current.filter((id) => id !== eventId)
@@ -236,7 +245,7 @@ export default function EventsPage() {
     )
   }
 
-  function toggleBottle(eventId: number, whiskyId: string) {
+  function toggleBottle(eventId: string, whiskyId: string) {
     const key = `${eventId}::${whiskyId}`
     setExpandedBottleKeys((current) =>
       current.includes(key)
@@ -245,7 +254,7 @@ export default function EventsPage() {
     )
   }
 
-  function isBottleExpanded(eventId: number, whiskyId: string) {
+  function isBottleExpanded(eventId: string, whiskyId: string) {
     return expandedBottleKeys.includes(`${eventId}::${whiskyId}`)
   }
 
