@@ -1,4 +1,8 @@
+'use client'
+
 import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 
 type MaybeArray<T> = T | T[] | null
@@ -111,20 +115,118 @@ async function getWhiskyDetail(id: string): Promise<{ whisky: Whisky; reviews: R
   return { whisky, reviews }
 }
 
-export default async function WhiskyDetailPage({
+export default function WhiskyDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>
 }) {
-  const { id } = await params
-  const { whisky, reviews } = await getWhiskyDetail(id)
+  const router = useRouter()
+  const [whisky, setWhisky] = useState<Whisky | null>(null)
+  const [reviews, setReviews] = useState<Review[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [deletingBottle, setDeletingBottle] = useState(false)
+  const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null)
 
-  const avg =
-    reviews.length > 0
-      ? (
-          reviews.reduce((sum, review) => sum + Number(review.rating), 0) / reviews.length
-        ).toFixed(2)
-      : null
+  useEffect(() => {
+    async function loadPage() {
+      setLoading(true)
+      setError('')
+
+      try {
+        const { id } = await params
+        const data = await getWhiskyDetail(id)
+        setWhisky(data.whisky)
+        setReviews(data.reviews)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Error loading bottle')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadPage()
+  }, [params])
+
+  const avg = useMemo(() => {
+    if (reviews.length === 0) return null
+    return (
+      reviews.reduce((sum, review) => sum + Number(review.rating), 0) / reviews.length
+    ).toFixed(2)
+  }, [reviews])
+
+  async function handleDeleteBottle() {
+    if (!whisky || deletingBottle) return
+
+    const confirmed = window.confirm(
+      'Delete this bottle and all its reviews? This cannot be undone.'
+    )
+    if (!confirmed) return
+
+    setDeletingBottle(true)
+
+    const { error: reviewsError } = await supabase
+      .from('reviews')
+      .delete()
+      .eq('whisky_id', whisky.id)
+
+    if (reviewsError) {
+      alert(reviewsError.message)
+      setDeletingBottle(false)
+      return
+    }
+
+    const { error: bottleError } = await supabase
+      .from('whiskies')
+      .delete()
+      .eq('id', whisky.id)
+
+    if (bottleError) {
+      alert(bottleError.message)
+      setDeletingBottle(false)
+      return
+    }
+
+    router.push('/whiskies')
+    router.refresh()
+  }
+
+  async function handleDeleteReview(reviewId: string) {
+    if (deletingReviewId) return
+
+    const confirmed = window.confirm('Delete this review?')
+    if (!confirmed) return
+
+    setDeletingReviewId(reviewId)
+
+    const { error } = await supabase.from('reviews').delete().eq('id', reviewId)
+
+    if (error) {
+      alert(error.message)
+      setDeletingReviewId(null)
+      return
+    }
+
+    setReviews((current) => current.filter((review) => review.id !== reviewId))
+    setDeletingReviewId(null)
+    router.refresh()
+  }
+
+  if (loading) {
+    return (
+      <main style={{ maxWidth: 1100, margin: '0 auto', padding: 8 }}>
+        <div style={cardStyle}>Loading bottle...</div>
+      </main>
+    )
+  }
+
+  if (error || !whisky) {
+    return (
+      <main style={{ maxWidth: 1100, margin: '0 auto', padding: 8 }}>
+        <div style={{ ...cardStyle, color: '#991b1b' }}>{error || 'Bottle not found.'}</div>
+      </main>
+    )
+  }
 
   return (
     <main style={{ maxWidth: 1100, margin: '0 auto', padding: 8 }}>
@@ -177,41 +279,36 @@ export default async function WhiskyDetailPage({
               </div>
 
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <Link href={`/reviews/new?whisky_id=${encodeURIComponent(whisky.id)}`} style={primaryButtonStyle}>
+                  Add Review
+                </Link>
+
                 <Link
                   href={`/whiskies/${encodeURIComponent(whisky.id)}/edit`}
-                  style={{
-                    display: 'inline-block',
-                    padding: '10px 16px',
-                    border: '1px solid #0f172a',
-                    borderRadius: 14,
-                    textDecoration: 'none',
-                    color: '#0f172a',
-                    fontSize: 14,
-                    fontWeight: 800,
-                    background: '#ffffff',
-                    whiteSpace: 'nowrap',
-                  }}
+                  style={neutralButtonStyle}
                 >
                   Edit Bottle
                 </Link>
 
                 <Link
                   href={`/whiskies/upload-photo?whiskyId=${encodeURIComponent(whisky.id)}`}
-                  style={{
-                    display: 'inline-block',
-                    padding: '10px 16px',
-                    border: '1px solid #1d4ed8',
-                    borderRadius: 14,
-                    textDecoration: 'none',
-                    color: '#ffffff',
-                    fontSize: 14,
-                    fontWeight: 800,
-                    background: 'linear-gradient(180deg, #3b82f6, #2563eb)',
-                    whiteSpace: 'nowrap',
-                  }}
+                  style={primaryButtonStyle}
                 >
                   Upload Photo
                 </Link>
+
+                <button
+                  type="button"
+                  onClick={handleDeleteBottle}
+                  disabled={deletingBottle}
+                  style={{
+                    ...dangerButtonStyle,
+                    opacity: deletingBottle ? 0.7 : 1,
+                    cursor: deletingBottle ? 'wait' : 'pointer',
+                  }}
+                >
+                  {deletingBottle ? 'Deleting Bottle...' : 'Delete Bottle'}
+                </button>
               </div>
             </div>
           </div>
@@ -253,9 +350,24 @@ export default async function WhiskyDetailPage({
       </section>
 
       <section>
-        <h2 style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginBottom: 12 }}>
-          Reviews
-        </h2>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            flexWrap: 'wrap',
+            marginBottom: 12,
+          }}
+        >
+          <h2 style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', margin: 0 }}>
+            Reviews
+          </h2>
+
+          <Link href={`/reviews/new?whisky_id=${encodeURIComponent(whisky.id)}`} style={primaryButtonStyle}>
+            Add Review
+          </Link>
+        </div>
 
         {reviews.length === 0 ? (
           <div style={cardStyle}>No reviews yet.</div>
@@ -285,21 +397,23 @@ export default async function WhiskyDetailPage({
 
                   <Link
                     href={`/reviews/${encodeURIComponent(review.id)}/edit`}
-                    style={{
-                      display: 'inline-block',
-                      padding: '8px 14px',
-                      border: '1px solid #0f172a',
-                      borderRadius: 12,
-                      textDecoration: 'none',
-                      color: '#0f172a',
-                      fontSize: 14,
-                      fontWeight: 700,
-                      background: '#ffffff',
-                      whiteSpace: 'nowrap',
-                    }}
+                    style={neutralSmallButtonStyle}
                   >
                     Edit Review
                   </Link>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteReview(review.id)}
+                    disabled={deletingReviewId === review.id}
+                    style={{
+                      ...dangerSmallButtonStyle,
+                      opacity: deletingReviewId === review.id ? 0.7 : 1,
+                      cursor: deletingReviewId === review.id ? 'wait' : 'pointer',
+                    }}
+                  >
+                    {deletingReviewId === review.id ? 'Deleting...' : 'Delete Review'}
+                  </button>
                 </div>
               </div>
 
@@ -332,5 +446,68 @@ const pillStyle: React.CSSProperties = {
   fontWeight: 800,
   color: '#1d4ed8',
   background: '#eff6ff',
+  whiteSpace: 'nowrap',
+}
+
+const primaryButtonStyle: React.CSSProperties = {
+  display: 'inline-block',
+  padding: '10px 16px',
+  border: '1px solid #1d4ed8',
+  borderRadius: 14,
+  textDecoration: 'none',
+  color: '#ffffff',
+  fontSize: 14,
+  fontWeight: 800,
+  background: 'linear-gradient(180deg, #3b82f6, #2563eb)',
+  whiteSpace: 'nowrap',
+}
+
+const neutralButtonStyle: React.CSSProperties = {
+  display: 'inline-block',
+  padding: '10px 16px',
+  border: '1px solid #0f172a',
+  borderRadius: 14,
+  textDecoration: 'none',
+  color: '#0f172a',
+  fontSize: 14,
+  fontWeight: 800,
+  background: '#ffffff',
+  whiteSpace: 'nowrap',
+}
+
+const dangerButtonStyle: React.CSSProperties = {
+  display: 'inline-block',
+  padding: '10px 16px',
+  border: '1px solid #dc2626',
+  borderRadius: 14,
+  color: '#dc2626',
+  fontSize: 14,
+  fontWeight: 800,
+  background: '#ffffff',
+  whiteSpace: 'nowrap',
+}
+
+const neutralSmallButtonStyle: React.CSSProperties = {
+  display: 'inline-block',
+  padding: '8px 14px',
+  border: '1px solid #0f172a',
+  borderRadius: 12,
+  textDecoration: 'none',
+  color: '#0f172a',
+  fontSize: 14,
+  fontWeight: 700,
+  background: '#ffffff',
+  whiteSpace: 'nowrap',
+}
+
+const dangerSmallButtonStyle: React.CSSProperties = {
+  display: 'inline-block',
+  padding: '8px 14px',
+  border: '1px solid #dc2626',
+  borderRadius: 12,
+  color: '#dc2626',
+  fontSize: 14,
+  fontWeight: 700,
+  background: '#ffffff',
   whiteSpace: 'nowrap',
 }
